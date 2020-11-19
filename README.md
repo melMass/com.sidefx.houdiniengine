@@ -11,8 +11,7 @@ available right inside Unity.
 The easiest way for artists to access the plug-in is to download the latest
 production build of Houdini and install the Unity plug-in along with the Houdini interactive software.
 Houdini Digital Assets created in Houdini can then be loaded into Unity through the plug-in. 
-A growing library of Digital Assets for use in Unity will be available at the [Orbolt Smart 3D Asset
-Store](http://www.orbolt.com/unity).
+A growing library of Digital Assets for use in Unity will be available at the [Orbolt Smart 3D Asset Store](http://www.orbolt.com/unity).
 
 For more information:
 
