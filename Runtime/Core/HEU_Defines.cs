@@ -90,84 +90,22 @@ namespace HoudiniEngineUnity
 	public const float HAPI_VOLUME_SURFACE_MAX_PT_PER_C = 64000; // Max points per container. 65000 is Unity max.
 	public const float HAPI_VOLUME_SURFACE_DELTA_MULT = 1.2f;
 	public const float HAPI_VOLUME_SURFACE_PT_SIZE_MULT = 1800.0f;
+	public const string DEFAULT_TOP_NODE_FILTER = "HE_";
+	public const string DEFAULT_TOP_OUTPUT_FILTER = "HE_OUT_";
 
 	// Shared Constants -------------------------------------------------
 	//
-	// IMPORTANT: Changes to these constants will not change the behavior of the
-	// underlying Houdini Engine. These are here to serve as C# duplicates of the
-	// constants defined in the HAPI_Common.h C++ header. In fact, if you
-	// change any of these you will most likely break the Unity plugin.
-
-	public const int HAPI_POSITION_VECTOR_SIZE = 3;
-	public const int HAPI_SCALE_VECTOR_SIZE = 3;
-	public const int HAPI_SHEAR_VECTOR_SIZE = 3;
-	public const int HAPI_NORMAL_VECTOR_SIZE = 3;
-	public const int HAPI_QUATERNION_VECTOR_SIZE = 4;
-	public const int HAPI_EULER_VECTOR_SIZE = 3;
-	public const int HAPI_COLOR_VECTOR_SIZE = 4;
-	public const int HAPI_CV_VECTOR_SIZE = 4;
-
-	public const int HAPI_PRIM_MIN_VERTEX_COUNT = 1;
-	public const int HAPI_PRIM_MAX_VERTEX_COUNT = 16;
-
-	public const int HAPI_INVALID_PARM_ID = -1;
-
-	public const int HAPI_MAX_UVS = 8;
-
-	// Default Attributes' Names
-	public const string HAPI_ATTRIB_POSITION = "P";
-	public const string HAPI_ATTRIB_UV = "uv";
-	public const string HAPI_ATTRIB_NORMAL = "N";
-	public const string HAPI_ATTRIB_TANGENT = "tangentu";
-	public const string HAPI_ATTRIB_COLOR = "Cd";
-	public const string HAPI_ATTRIB_ALPHA = "Alpha";
-	public const string HAPI_ATTRIB_NAME = "name";
-	public const string HAPI_ATTRIB_INSTANCE = "instance";
+	// Similar to the auto-generated HEU_HAPIConstants, but Unity plugin might need some more
 	public const string HAPI_ATTRIB_ORIENT = "orient";
-
-	public const string HAPI_UNGROUPED_GROUP_NAME = "__ungrouped_group";
-
-	// Handle types
+	public const string HAPI_ATTRIB_ROTATION = "rot";
+	public const string HAPI_ATTRIB_SCALE = "scale";
+	public const string HAPI_ATTRIB_ALPHA = "Alpha";
 	public const string HAPI_HANDLE_TRANSFORM = "xform";
-
-	// Common image file format names (to use with the material extract APIs).
-	// Note that you may still want to check if they are supported via
-	// HAPI_GetSupportedImageFileFormats() since all formats are loaded 
-	// dynamically by Houdini on-demand so just because these formats are defined
-	// here doesn't mean they are supported in your instance.
-	public const string HAPI_RAW_FORMAT_NAME = "HAPI_RAW"; // HAPI-only Raw Format
-	public const string HAPI_PNG_FORMAT_NAME = "PNG";
-	public const string HAPI_JPEG_FORMAT_NAME = "JPEG";
-	public const string HAPI_BMP_FORMAT_NAME = "Bitmap";
-	public const string HAPI_TIFF_FORMAT_NAME = "TIFF";
-	public const string HAPI_TGA_FORMAT_NAME = "Targa";
-
-	// Default image file format's name - used when the image generated and has
-	// no "original" file format and the user does not specify a format to
-	// convert to.
-	public const string HAPI_DEFAULT_IMAGE_FORMAT_NAME = HAPI_PNG_FORMAT_NAME;
-
-	/// Name of subnet OBJ node containing the global nodes.
-	public const string HAPI_GLOBAL_NODES_NODE_NAME = "GlobalNodes";
-
-	/// Environment variables.
-	public const string HAPI_ENV_HIP = "HIP";
-	public const string HAPI_ENV_JOB = "JOB";
-	public const string HAPI_ENV_CLIENT_NAME = "HAPI_CLIENT_NAME";
-
-	/// Common cache names. You can see these same cache names in the
-	/// Cache Manager window in Houdini (Windows > Cache Manager).
-	public const string HAPI_CACHE_COP_COOK = "COP Cook Cache";
-	public const string HAPI_CACHE_COP_FLIPBOOK = "COP Flipbook Cache";
-	public const string HAPI_CACHE_IMAGE = "Image Cache";
-	public const string HAPI_CACHE_OBJ = "Object Transform Cache";
-	public const string HAPI_CACHE_GL_TEXTURE = "OpenGL Texture Cache";
-	public const string HAPI_CACHE_GL_VERTEX = "OpenGL Vertex Cache";
-	public const string HAPI_CACHE_SOP = "SOP Cache";
-	public const string HAPI_CACHE_VEX = "VEX File Cache";
+	public const int HAPI_MAX_UVS = 8;
 
 	public const string HAPI_OBJMERGE_TRANSFORM_PARAM = "xformtype";
 	public const string HAPI_OBJMERGE_PACK_GEOMETRY = "pack";
+	public const string HAPI_OBJPATH_1_PARAM = "objpath1";
 
 	// Messages
 	public const string NO_EXISTING_SESSION = "No existing session.";
@@ -180,13 +118,16 @@ namespace HoudiniEngineUnity
 	public const string PLUGIN_SESSION_DATA = "HoudiniEngineSession";
 	public const string PLUGIN_SETTINGS_FILE = "heu_settings.ini";
 	public const string PLUGIN_SESSION_FILE = "heu_session.txt";
+	public const string COOK_LOGS_FILE = "cook_logs_file.txt";
 
 	// Collision
 	public const string DEFAULT_COLLISION_GEO = "collision_geo";
 	public const string DEFAULT_RENDERED_COLLISION_GEO = "rendered_collision_geo";
+	public const string DEFAULT_RENDERED_CONVEX_COLLISION_GEO = "rendered_convex_collision_geo";
 	public const string DEFAULT_CONVEX_COLLISION_GEO = "convex";
 	public const string DEFAULT_SIMPLE_COLLISION_GEO = "collision_geo_simple";
 	public const string DEFAULT_SIMPLE_RENDERED_COLLISION_GEO = "rendered_collision_geo_simple";
+	public const string DEFAULT_SIMPLE_RENDERED_CONVEX_COLLISION_GEO = "rendered_convex_collision_geo_simple";
 	public const string DEFAULT_COLLISION_TRIGGER = "trigger";
 
 	// Materials
@@ -220,6 +161,9 @@ namespace HoudiniEngineUnity
 	public const string HEIGHTFIELD_TREEINSTANCE_LIGHTMAPCOLOR = "unity_hf_treeinstance_lightmapcolor";
 
 	public const string HEIGHTFIELD_DETAIL_RESOLUTION_PER_PATCH = "unity_hf_detail_resolution_patch";
+
+	// Deprecated, use "tile" instead
+	public const string HEIGHTFIELD_UNITY_TILE = "unity_hf_tile";
 	public const string HEIGHTFIELD_DETAIL_DISTANCE = "unity_hf_detail_distance";
 	public const string HEIGHTFIELD_DETAIL_DENSITY = "unity_hf_detail_density";
 
@@ -245,24 +189,91 @@ namespace HoudiniEngineUnity
 
 
 	// Material Attributes
-	public const string MAT_OGL_ALPHA_ATTR = "ogl_alpha";
-	public const string MAT_OGL_NORMAL_ATTR = "ogl_normalmap";
-	public const string MAT_OGL_TEX1_ATTR = "ogl_tex1";
-	public const string MAT_BASECOLOR_ATTR = "baseColorMap";
-	public const string MAT_MAP_ATTR = "map";
-	public const string MAT_OGL_ROUGH_ATTR = "ogl_rough";
+
+	// Diffuse
 	public const string MAT_OGL_DIFF_ATTR = "ogl_diff";
+	public const string MAT_DIFF_ATTR = "basecolor";
+
+	public const string MAT_OGL_TEX1_ATTR = "ogl_tex1";
+	public const string MAT_OGL_TEX1_ATTR_ENABLED = "ogl_use_tex1";
+
+	public const string MAT_BASECOLOR_ATTR = "basecolor_texture";
+	public const string MAT_BASECOLOR_ATTR_ENABLED = "basecolor_useTexture";
+
+	public const string MAT_MAP_ATTR = "map";
+
+	public const string MAT_OGL_NORMAL_ATTR = "ogl_normalmap";
+	public const string MAT_NORMAL_ATTR = "baseNormal_texture";
+	public const string MAT_NORMAL_ATTR_ENABLED = "baseBumpAndNormal_enable";
+
+	// Specular
 	public const string MAT_OGL_SPEC_ATTR = "ogl_spec";
+	public const string MAT_SPEC_ATTR = "reflect";
 
-	// Parameters
+	public const string MAT_OGL_SPEC_MAP_ATTR = "ogl_specmap";
+	public const string MAT_OGL_SPEC_MAP_ATTR_ENABLED = "ogl_use_specmap";
+	public const string MAT_SPEC_MAP_ATTR = "reflect_texture";
+	public const string MAT_SPEC_MAP_ATTR_ENABLED = "reflect_useTexture";
+
+	// Roughness
+	public const string MAT_OGL_ROUGH_ATTR = "ogl_rough";
+	public const string MAT_ROUGH_ATTR = "rough";
+
+	public const string MAT_OGL_ROUGH_MAP_ATTR = "ogl_roughmap";
+	public const string MAT_OGL_ROUGH_MAP_ATTR_ENABLED = "ogl_use_roughmap";
+
+	public const string MAT_ROUGH_MAP_ATTR = "rough_texture";
+	public const string MAT_ROUGH_MAP_ATTR_ENABLED = "rough_useTexture";
+
+	// Metallic
+	public const string MAT_OGL_METALLIC_ATTR = "ogl_metallic";
+	public const string MAT_METALLIC_ATTR = "metallic";
+
+	public const string MAT_OGL_METALLIC_MAP_ATTR = "ogl_metallicmap";
+	public const string MAT_OGL_METALLIC_MAP_ATTR_ENABLED = "ogl_use_metallicmap";
+
+	public const string MAT_METALLIC_MAP_ATTR = "metallic_texture";
+	public const string MAT_METALLIC_MAP_ATTR_ENABLED = "metallic_useTexture";
+	// Emissive
+	public const string MAT_OGL_EMISSIVE_ATTR = "ogl_emit";
+	public const string MAT_EMISSIVE_ATTR = "emitcolor";
+	public const string MAT_OGL_EMISSIVE_MAP_ATTR = "ogl_emissionmap";
+	public const string MAT_OGL_EMISSIVE_MAP_ATTR_ENABLED = "ogl_use_emissionmap";
+	public const string MAT_EMISSIVE_MAP_ATTR = "emitcolor_texture";
+	public const string MAT_EMISSIVE_MAP_ATTR_ENABLED = "emitcolor_useTexture";
+
+	// Alpha
+	public const string MAT_OGL_ALPHA_ATTR = "ogl_alpha";
+	public const string MAT_ALPHA_ATTR = "opac";
+
+	public const string MAT_OGL_OPACITY_MAP_ATTR = "ogl_opacitymap";
+	public const string MAT_OGL_OPACITY_MAP_ATTR_ENABLED = "ogl_use_opacitymap";
+
+	public const string MAT_OPACITY_MAP_ATTR = "opaccolor_texture";
+	public const string MAT_OPACITY_MAP_ATTR_ENABLED = "opaccolor_useTexture";
+	public const string MAT_OGL_TRANSPARENCY_ATTR = "ogl_transparency";
+	public const string MAT_OGL_TRANSPARENCY_ATTR_ENABLED = "ogl_use_alpha_transparency";
+
+
+	// Occlusion (No regular occlusion, just maps)
+	public const string MAT_OGL_OCCLUSION_MAP_ATTR = "ogl_occlusionmap";
+	public const string MAT_OGL_OCCLUSION_MAP_ATTR_ENABLED = "ogl_use_occlusionmap";
+
+	// Curve Parameters
 	public const string CURVE_COORDS_PARAM = "coords";
+	public const string CURVE_TYPE_PARAM = "type";
+	public const string CURVE_METHOD_PARAM = "method";
+	public const string CURVE_CLOSE_PARAM = "close";
+	public const string CURVE_REVERSE_PARAM = "reverse";
 
+	// Attribute store
 	public const string HENGINE_STORE_ATTR = "hengine_attr_store";
 
 	// Unity Attributes
 	public const string DEFAULT_UNITY_TAG_ATTR = "unity_tag";
 	public const string DEFAULT_UNITY_SCRIPT_ATTR = "unity_script";
 	public const string DEFAULT_UNITY_INSTANCE_ATTR = "unity_instance";
+	public const string UNITY_USE_INSTANCE_FLAGS_ATTR = "unity_use_instance_flags";
 	public const string DEFAULT_UNITY_INPUT_MESH_ATTR = "unity_input_mesh_name";
 	public const string DEFAULT_UNITY_STATIC_ATTR = "unity_static";
 	public const string DEFAULT_UNITY_LAYER_ATTR = "unity_layer";
@@ -271,22 +282,71 @@ namespace HoudiniEngineUnity
 	public const string DEFAULT_INSTANCE_PREFIX_ATTR = "instance_prefix";
 
 	// Unity Shaders
-	public const string UNITY_SHADER_BUMP_MAP = "_BumpMap";
-	public const string UNITY_SHADER_SHININESS = "_Shininess";
 	public const string UNITY_SHADER_COLOR = "_Color";
-	public const string UNITY_SHADER_SPECCOLOR = "_SpecColor";
+	public const string UNITY_SHADER_SPEC_COLOR = "_SpecColor";
+	public const string UNITY_SHADER_SPEC_MAP = "_SpecMap";
+	public const string UNITY_SHADER_METALLIC = "_Metallic";
+	public const string UNITY_SHADER_METALLIC_MAP = "_MetallicMap";
+
+	public const string UNITY_SHADER_BUMP_MAP = "_BumpMap";
+	public const string UNITY_SHADER_EMISSION_COLOR = "_EmissionColor";
+	public const string UNITY_SHADER_EMISSION_MAP = "_EmissionMap";
+	
+	public const string UNITY_SHADER_SMOOTHNESS = "_Smoothness";
+	public const string UNITY_SHADER_SMOOTHNESS_MAP = "_SmoothnessMap";
+	public const string UNITY_SHADER_SHININESS = "_Shininess"; // Deprecated. Use Smoothness instead..
+	public const string UNITY_SHADER_OCCLUSION = "_Occlusion";
+	public const string UNITY_SHADER_OCCLUSION_MAP = "_OcclusionMap";
+
+	public const string UNITY_SHADER_OPACITY = "_Opacity";
+	public const string UNITY_SHADER_OPACITY_MAP = "_OpacityMap";
 
 	// Unity tags
 	public const string UNITY_EDITORONLY_TAG = "EditorOnly";
 	public const string UNITY_HDADATA_NAME = "HDA_Data";
 
 	public const string HOUDINI_SHADER_PREFIX = "Houdini/";
-	public const string DEFAULT_STANDARD_SHADER = "SpecularVertexColor";
-	public const string DEFAULT_VERTEXCOLOR_SHADER = "SpecularVertexColor";
-	public const string DEFAULT_TRANSPARENT_SHADER = "AlphaSpecularVertexColor";
+
+	public const string DEFAULT_STANDARD_SHADER = "HoudiniStandard";
+	public const string DEFAULT_VERTEXCOLOR_SHADER = DEFAULT_STANDARD_SHADER;
+	public const string DEFAULT_TRANSPARENT_SHADER = "HoudiniStandardAlpha";
+	public const string DEFAULT_STANDARD_SHADER_SPECULAR = "HoudiniSpecular";
+	public const string DEFAULT_STANDARD_SHADER_SPECULAR_LEGACY = "Legacy/SpecularVertexColor";
+	public const string DEFAULT_VERTEXCOLOR_SHADER_SPECULAR = DEFAULT_STANDARD_SHADER_SPECULAR;
+	public const string DEFAULT_VERTEXCOLOR_SHADER_SPECULAR_LEGACY = DEFAULT_STANDARD_SHADER_SPECULAR_LEGACY;
+	public const string DEFAULT_TRANSPARENT_SHADER_SPECULAR = "HoudiniSpecularAlpha";
+	public const string DEFAULT_TRANSPARENT_SHADER_SPECULAR_LEGACY = "Legacy/AlphaSpecularVertexColor";
 	public const string DEFAULT_CURVE_SHADER = "LineShader";
+	public const string DEFAULT_TERRAIN_SHADER = "Nature/Terrain/Standard";
+	
+	public const string DEFAULT_STANDARD_SHADER_HDRP = "HDRP/StandardLit";
+	public const string DEFAULT_VERTEXCOLOR_SHADER_HDRP = DEFAULT_STANDARD_SHADER_HDRP;
+	public const string DEFAULT_TRANSPARENT_SHADER_HDRP = "HDRP/StandardLitAlpha";
+
+	public const string DEFAULT_STANDARD_SHADER_HDRP_SPECULAR = "HDRP/SpecularLit";
+	public const string DEFAULT_VERTEXCOLOR_SHADER_HDRP_SPECULAR = DEFAULT_STANDARD_SHADER_HDRP_SPECULAR;
+	public const string DEFAULT_TRANSPARENT_SHADER_HDRP_SPECULAR = "HDRP/SpecularLitAlpha";
+
+	public const string DEFAULT_CURVE_SHADER_HDRP = "HDRP/Color";
+	public const string DEFAULT_TERRAIN_SHADER_HDRP = "HDRP/TerrainLit";
+
+	public const string DEFAULT_STANDARD_SHADER_URP = "URP/StandardLit";
+	public const string DEFAULT_VERTEXCOLOR_SHADER_URP = DEFAULT_STANDARD_SHADER_URP;
+	public const string DEFAULT_TRANSPARENT_SHADER_URP = "URP/StandardLitAlpha";
+
+	public const string DEFAULT_STANDARD_SHADER_URP_SPECULAR = "URP/SpecularLit";
+	public const string DEFAULT_VERTEXCOLOR_SHADER_URP_SPECULAR = DEFAULT_STANDARD_SHADER_URP_SPECULAR;
+	public const string DEFAULT_TRANSPARENT_SHADER_URP_SPECULAR = "URP/SpecularLitAlpha";
+
+	public const string DEFAULT_CURVE_SHADER_URP = "URP/Color";
+	public const string DEFAULT_TERRAIN_SHADER_URP = "Universal Render Pipeline/Terrain/Lit";
 
 	public const string DEFAULT_UNITY_BUILTIN_RESOURCES = "Resources/unity_builtin_extra";
+
+	// Built-in terrain material paths:
+	public const string DEFAULT_TERRAIN_MATERIAL_PATH = "Resources/unity_builtin_extra::name::Default-Terrain-Standard";
+	public const string DEFAULT_TERRAIN_MATERIAL_PATH_HDRP = "Packages/com.unity.render-pipelines.high-definition/Runtime/RenderPipelineResources/Material/DefaultHDTerrainMaterial.mat";
+	public const string DEFAULT_TERRAIN_MATERIAL_PATH_URP = "Packages/com.unity.render-pipelines.universal/Runtime/Materials/TerrainLit.mat";
 
 	public const string DEFAULT_MATERIAL = "HEU_DEFAULT_MATERIAL";
 	public static int DEFAULT_MATERIAL_KEY = DEFAULT_MATERIAL.GetHashCode();
@@ -306,6 +366,7 @@ namespace HoudiniEngineUnity
 	// Instance Names
 	public const string HEU_INSTANCE = "_Instance";
 	public const string HEU_INSTANCE_PATTERN = HEU_INSTANCE + "\\d*\\z";
+	public const string HEU_INSTANCE_SPLIT_ATTR = "unity_split_attr";
 
 	// Geometry
 	public const string HEU_DEFAULT_GEO_GROUP_NAME = "main_geo";

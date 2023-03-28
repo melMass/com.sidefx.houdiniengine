@@ -25,6 +25,7 @@
 */
 
 using System.Collections.Generic;
+using System.Text;
 using UnityEngine;
 
 namespace HoudiniEngineUnity
@@ -64,6 +65,7 @@ namespace HoudiniEngineUnity
 	    _ownerSync = ownerSync;
 	    _session = session;
 	    _name = name;
+	    _assetCachePath = GetValidAssetCacheFolderPath(_name);
 
 	    _generateOptions = _ownerSync._generateOptions;
 
@@ -71,7 +73,7 @@ namespace HoudiniEngineUnity
 	    _loadData = new HEU_LoadData();
 	    _loadData._cookNodeID = cookNodeID;
 	    _loadData._loadStatus = HEU_LoadData.LoadStatus.NONE;
-	    _loadData._logStr = "";
+	    _loadData._logStr = new StringBuilder();
 	}
 
 	/// <summary>
@@ -127,11 +129,11 @@ namespace HoudiniEngineUnity
 	{
 	    _loadData._loadStatus = HEU_LoadData.LoadStatus.STARTED;
 
-	    //Debug.LogFormat("DoWork: Loading {0}", _filePath);
+	    //HEU_Logger.LogFormat("DoWork: Loading {0}", _filePath);
 
 	    if (_session == null || !_session.IsSessionValid())
 	    {
-		SetLog(HEU_LoadData.LoadStatus.ERROR, "Invalid session!");
+		AppendLog(HEU_LoadData.LoadStatus.ERROR, "Invalid session!");
 		return;
 	    }
 
@@ -156,7 +158,7 @@ namespace HoudiniEngineUnity
 	    HAPI_NodeId cookNodeID = GetCookNodeID();
 	    if (cookNodeID == HEU_Defines.HEU_INVALID_NODE_ID)
 	    {
-		SetLog(HEU_LoadData.LoadStatus.ERROR, string.Format("Unable to get cook node."));
+		AppendLog(HEU_LoadData.LoadStatus.ERROR, string.Format("Unable to get cook node."));
 		return;
 	    }
 
@@ -202,11 +204,11 @@ namespace HoudiniEngineUnity
 
 	    if (bResult)
 	    {
-		SetLog(HEU_LoadData.LoadStatus.SUCCESS, "Completed!");
+		AppendLog(HEU_LoadData.LoadStatus.SUCCESS, "Completed!");
 	    }
 	    else
 	    {
-		SetLog(HEU_LoadData.LoadStatus.ERROR, "Failed to load geometry!");
+		AppendLog(HEU_LoadData.LoadStatus.ERROR, "Failed to load geometry!");
 	    }
 	}
 
@@ -215,7 +217,7 @@ namespace HoudiniEngineUnity
 	    // Cooking it will load the bgeo
 	    if (!session.CookNode(cookNodeID, false))
 	    {
-		SetLog(HEU_LoadData.LoadStatus.ERROR, string.Format("Unable to cook node."));
+		AppendLog(HEU_LoadData.LoadStatus.ERROR, string.Format("Unable to cook node."));
 		return false;
 	    }
 
@@ -233,7 +235,7 @@ namespace HoudiniEngineUnity
 	    if (statusCode == HAPI_State.HAPI_STATE_READY_WITH_COOK_ERRORS || statusCode == HAPI_State.HAPI_STATE_READY_WITH_FATAL_ERRORS)
 	    {
 		string statusString = session.GetStatusString(HAPI_StatusType.HAPI_STATUS_COOK_RESULT, HAPI_StatusVerbosity.HAPI_STATUSVERBOSITY_ERRORS);
-		SetLog(HEU_LoadData.LoadStatus.ERROR, string.Format("Cook failed: {0}.", statusString));
+		AppendLog(HEU_LoadData.LoadStatus.ERROR, string.Format("Cook failed: {0}.", statusString));
 		return false;
 	    }
 
@@ -300,30 +302,30 @@ namespace HoudiniEngineUnity
 	    List<HAPI_PartInfo> scatterInstancerParts = new List<HAPI_PartInfo>();
 	    if (!QueryParts(nodeID, ref meshParts, ref volumeParts, ref instancerParts, ref curveParts, ref scatterInstancerParts))
 	    {
-		SetLog(HEU_LoadData.LoadStatus.ERROR, string.Format("Unable to query parts on node."));
+		AppendLog(HEU_LoadData.LoadStatus.ERROR, string.Format("Unable to query parts on node."));
 		return false;
 	    }
 
 	    // Create Unity mesh buffers
 	    if (!GenerateMeshBuffers(_session, nodeID, meshParts, _generateOptions._splitPoints, _generateOptions._useLODGroups,
-				_generateOptions._generateUVs, _generateOptions._generateTangents, _generateOptions._generateNormals,
+				_generateOptions._generateUVs, _generateOptions._generateTangents, _generateOptions._generateNormals, loadObject,
 				out loadObject._meshBuffers))
 	    {
-		SetLog(HEU_LoadData.LoadStatus.ERROR, string.Format("Unable to generate mesh data from parts."));
+		AppendLog(HEU_LoadData.LoadStatus.ERROR, string.Format("Unable to generate mesh data from parts."));
 		return false;
 	    }
 
 	    // Create Unity terrain buffers
 	    if (!GenerateTerrainBuffers(_session, nodeID, volumeParts, scatterInstancerParts, out loadObject._terrainBuffers))
 	    {
-		SetLog(HEU_LoadData.LoadStatus.ERROR, string.Format("Unable to generate terrain data from volume parts."));
+		AppendLog(HEU_LoadData.LoadStatus.ERROR, string.Format("Unable to generate terrain data from volume parts."));
 		return false;
 	    }
 
 	    // Create instancers (should come after normal geometry has been generated above)
 	    if (!GenerateInstancerBuffers(_session, nodeID, instancerParts, out loadObject._instancerBuffers))
 	    {
-		SetLog(HEU_LoadData.LoadStatus.ERROR, string.Format("Unable to generate data from instancer parts."));
+		AppendLog(HEU_LoadData.LoadStatus.ERROR, string.Format("Unable to generate data from instancer parts."));
 		return false;
 	    }
 
@@ -371,7 +373,7 @@ namespace HoudiniEngineUnity
 	    // Check file path
 	    if (!HEU_Platform.DoesPathExist(_filePath))
 	    {
-		SetLog(HEU_LoadData.LoadStatus.ERROR, string.Format("File not found at {0}", _filePath));
+		AppendLog(HEU_LoadData.LoadStatus.ERROR, string.Format("File not found at {0}", _filePath));
 		return false;
 	    }
 
@@ -380,7 +382,7 @@ namespace HoudiniEngineUnity
 	    {
 		if (!CreateFileNode(out _loadData._cookNodeID))
 		{
-		    SetLog(HEU_LoadData.LoadStatus.ERROR, string.Format("Unable to create file node in Houdini."));
+		    AppendLog(HEU_LoadData.LoadStatus.ERROR, string.Format("Unable to create file node in Houdini."));
 		    return false;
 		}
 	    }
@@ -388,14 +390,14 @@ namespace HoudiniEngineUnity
 	    HAPI_NodeId displayNodeID = GetDisplayNodeID(_loadData._cookNodeID);
 	    if (displayNodeID == HEU_Defines.HEU_INVALID_NODE_ID)
 	    {
-		SetLog(HEU_LoadData.LoadStatus.ERROR, string.Format("Unable to get display node of file geo node."));
+		AppendLog(HEU_LoadData.LoadStatus.ERROR, string.Format("Unable to get display node of file geo node."));
 		return false;
 	    }
 
 	    // Set the file parameter
 	    if (!SetFileParm(displayNodeID, _filePath))
 	    {
-		SetLog(HEU_LoadData.LoadStatus.ERROR, string.Format("Unable to set file path parm."));
+		AppendLog(HEU_LoadData.LoadStatus.ERROR, string.Format("Unable to set file path parm."));
 		return false;
 	    }
 
@@ -419,10 +421,10 @@ namespace HoudiniEngineUnity
 	    {
 		if (!_session.LoadAssetLibraryFromMemory(buffer, true, out libraryID))
 		{
-		    Debug.LogErrorFormat("Unable to load asset library.");
+		    HEU_Logger.LogErrorFormat("Unable to load asset library.");
 		    return false;
 		}
-		//Debug.Log("Loaded asset");
+		//HEU_Logger.Log("Loaded asset");
 
 		int assetCount = 0;
 		bResult = _session.GetAvailableAssetCount(libraryID, out assetCount);
@@ -451,7 +453,7 @@ namespace HoudiniEngineUnity
 		{
 		    return false;
 		}
-		//Debug.Log("Created asset node");
+		//HEU_Logger.Log("Created asset node");
 
 		_loadData._cookNodeID = newNodeID;
 	    }
@@ -473,7 +475,7 @@ namespace HoudiniEngineUnity
 		return false;
 	    }
 
-	    //Debug.LogFormat("GeoNode name:{0}, type: {1}, isTemplated: {2}, isDisplayGeo: {3}, isEditable: {4}, parts: {5}",
+	    //HEU_Logger.LogFormat("GeoNode name:{0}, type: {1}, isTemplated: {2}, isDisplayGeo: {3}, isEditable: {4}, parts: {5}",
 	    //	HEU_SessionManager.GetString(geoInfo.nameSH, _session),
 	    //	geoInfo.type, geoInfo.isTemplated,
 	    //	geoInfo.isDisplayGeo, geoInfo.isEditable, geoInfo.partCount);
@@ -489,7 +491,7 @@ namespace HoudiniEngineUnity
 			return false;
 		    }
 
-		    //Debug.LogFormat("Part {0} with name {1} and type {2}", i, HEU_SessionManager.GetString(partInfo.nameSH), partInfo.type);
+		    //HEU_Logger.LogFormat("Part {0} with name {1} and type {2}", i, HEU_SessionManager.GetString(partInfo.nameSH), partInfo.type);
 
 		    bool isAttribInstancer = false;
 		    bool isScatterInstancer = false;
@@ -536,13 +538,13 @@ namespace HoudiniEngineUnity
 		    else
 		    {
 			string partName = HEU_SessionManager.GetString(partInfo.nameSH, _session);
-			SetLog(HEU_LoadData.LoadStatus.ERROR, string.Format("Part {0} with type {1} is not supported for GeoSync.", partName, partInfo.type));
+			AppendLog(HEU_LoadData.LoadStatus.ERROR, string.Format("Part {0} with type {1} is not supported for GeoSync.", partName, partInfo.type));
 		    }
 		}
 	    }
 	    else if (geoInfo.type == HAPI_GeoType.HAPI_GEOTYPE_CURVE)
 	    {
-		SetLog(HEU_LoadData.LoadStatus.ERROR, string.Format("Currently {0} geo type is not implemented for threaded geo loading!", geoInfo.type));
+		AppendLog(HEU_LoadData.LoadStatus.ERROR, string.Format("Currently {0} geo type is not implemented for threaded geo loading!", geoInfo.type));
 	    }
 
 	    return true;
@@ -557,7 +559,7 @@ namespace HoudiniEngineUnity
 	/// </summary>
 	protected override void OnComplete()
 	{
-	    //Debug.LogFormat("OnCompete: Loaded {0}", _filePath);
+	    //HEU_Logger.LogFormat("OnCompete: Loaded {0}", _filePath);
 
 	    if (_ownerSync != null)
 	    {
@@ -567,7 +569,7 @@ namespace HoudiniEngineUnity
 
 	protected override void OnStopped()
 	{
-	    //Debug.LogFormat("OnStopped: Loaded {0}", _filePath);
+	    //HEU_Logger.LogFormat("OnStopped: Loaded {0}", _filePath);
 
 	    if (_ownerSync != null)
 	    {
@@ -586,10 +588,27 @@ namespace HoudiniEngineUnity
 
 	#region MISC
 
+	private string CreateLogString(HEU_LoadData.LoadStatus status, string logStr)
+	{
+	    return string.Format("{0} : {1}", _loadData._loadStatus.ToString(), logStr);
+	}
+
+	private void AppendLog(HEU_LoadData.LoadStatus status, string logStr)
+	{
+	    lock (_loadData._logStr)
+	    {
+		_loadData._loadStatus = status;
+		_loadData._logStr.AppendLine(CreateLogString(status, logStr));
+	    }
+	}
+
 	private void SetLog(HEU_LoadData.LoadStatus status, string logStr)
 	{
-	    _loadData._loadStatus = status;
-	    _loadData._logStr = string.Format("{0} : {1}", _loadData._loadStatus.ToString(), logStr);
+	    lock (_loadData._logStr)
+	    {
+		_loadData._loadStatus = status;
+		_loadData._logStr = new System.Text.StringBuilder(CreateLogString(status, logStr));
+	    }
 	}
 
 	private bool CreateFileNode(out HAPI_NodeId fileNodeID)
@@ -664,13 +683,13 @@ namespace HoudiniEngineUnity
 		bool bResult = session.GetVolumeInfo(nodeID, volumeParts[i].id, ref volumeInfo);
 		if (!bResult || volumeInfo.tupleSize != 1 || volumeInfo.zLength != 1 || volumeInfo.storage != HAPI_StorageType.HAPI_STORAGETYPE_FLOAT)
 		{
-		    SetLog(HEU_LoadData.LoadStatus.ERROR, "This heightfield is not supported. Please check documentation.");
+		    AppendLog(HEU_LoadData.LoadStatus.ERROR, "This heightfield is not supported. Please check documentation.");
 		    return false;
 		}
 
 		if (volumeInfo.xLength != volumeInfo.yLength)
 		{
-		    SetLog(HEU_LoadData.LoadStatus.ERROR, "Non-square sized terrain not supported.");
+		    AppendLog(HEU_LoadData.LoadStatus.ERROR, "Non-square sized terrain not supported.");
 		    return false;
 		}
 
@@ -678,7 +697,7 @@ namespace HoudiniEngineUnity
 
 		HFLayerType layerType = HEU_TerrainUtility.GetHeightfieldLayerType(session, nodeID, volumeParts[i].id, volumeName);
 
-		//Debug.LogFormat("Index: {0}, Part id: {1}, Part Name: {2}, Volume Name: {3}", i, volumeParts[i].id, HEU_SessionManager.GetString(volumeParts[i].nameSH), volumeName);
+		//HEU_Logger.LogFormat("Index: {0}, Part id: {1}, Part Name: {2}, Volume Name: {3}", i, volumeParts[i].id, HEU_SessionManager.GetString(volumeParts[i].nameSH), volumeName);
 
 		// Ignoring mask layer because it is Houdini-specific (same behaviour as regular HDA terrain generation)
 		if (layerType == HFLayerType.MASK)
@@ -711,8 +730,8 @@ namespace HoudiniEngineUnity
 			out layer._center.x, out layer._center.y, out layer._center.z);
 
 		// Look up TerrainLayer file via attribute if user has set it
-		layer._layerPath = HEU_GeneralUtility.GetAttributeStringValueSingle(session, nodeID, volumeParts[i].id,
-			HEU_Defines.DEFAULT_UNITY_HEIGHTFIELD_TERRAINLAYER_FILE_ATTR, HAPI_AttributeOwner.HAPI_ATTROWNER_PRIM);
+		layer._layerPath = HEU_GeneralUtility.GetAttributeStringValueSingleStrict(session, nodeID, volumeParts[i].id,
+                                HEU_Defines.DEFAULT_UNITY_HEIGHTFIELD_TERRAINLAYER_FILE_ATTR, HAPI_AttributeOwner.HAPI_ATTROWNER_PRIM);
 
 		if (layerType != HFLayerType.DETAIL)
 		{
@@ -741,15 +760,8 @@ namespace HoudiniEngineUnity
 		}
 
 		// Get the tile index, if it exists, for this part
-		HAPI_AttributeInfo tileAttrInfo = new HAPI_AttributeInfo();
-		int[] tileAttrData = new int[0];
-		HEU_GeneralUtility.GetAttribute(session, nodeID, volumeParts[i].id, HEU_Defines.HAPI_HEIGHTFIELD_TILE_ATTR, ref tileAttrInfo, ref tileAttrData, session.GetAttributeIntData);
-
 		int tileIndex = 0;
-		if (tileAttrInfo.exists && tileAttrData.Length == 1)
-		{
-		    tileIndex = tileAttrData[0];
-		}
+		HEU_TerrainUtility.GetAttributeTile(session, nodeID, volumeParts[i].id, out tileIndex);
 
 		// Add layer based on tile index
 		if (tileIndex >= 0)
@@ -796,11 +808,11 @@ namespace HoudiniEngineUnity
 			}
 
 			// Look up TerrainData file path via attribute if user has set it
-			volumeBuffer._terrainDataPath = HEU_GeneralUtility.GetAttributeStringValueSingle(session, nodeID, volumeBuffer._id,
+			volumeBuffer._terrainDataPath = HEU_GeneralUtility.GetAttributeStringValueSingleStrict(session, nodeID, volumeBuffer._id,
 				HEU_Defines.DEFAULT_UNITY_HEIGHTFIELD_TERRAINDATA_FILE_ATTR, HAPI_AttributeOwner.HAPI_ATTROWNER_PRIM);
 
 			// Look up TerrainData export file path via attribute if user has set it
-			volumeBuffer._terrainDataExportPath = HEU_GeneralUtility.GetAttributeStringValueSingle(session, nodeID, volumeBuffer._id,
+			volumeBuffer._terrainDataExportPath = HEU_GeneralUtility.GetAttributeStringValueSingleStrict(session, nodeID, volumeBuffer._id,
 				HEU_Defines.DEFAULT_UNITY_HEIGHTFIELD_TERRAINDATA_EXPORT_FILE_ATTR, HAPI_AttributeOwner.HAPI_ATTROWNER_PRIM);
 
 			// Load the TreePrototype buffers
@@ -851,7 +863,7 @@ namespace HoudiniEngineUnity
 	    foreach (HEU_LoadBufferVolume volumeBuffer in volumeBuffers)
 	    {
 		List<HEU_LoadBufferVolumeLayer> layers = volumeBuffer._splatLayers;
-		//Debug.LogFormat("Heightfield: tile={0}, layers={1}", tile._tileIndex, layers.Count);
+		//HEU_Logger.LogFormat("Heightfield: tile={0}, layers={1}", tile._tileIndex, layers.Count);
 
 		int heightMapWidth = volumeBuffer._heightMapWidth;
 		int heightMapHeight = volumeBuffer._heightMapHeight;
@@ -899,19 +911,7 @@ namespace HoudiniEngineUnity
 	    {
 		// Find the terrain tile (use primitive attr). Assume 0 tile if not set (i.e. not split into tiles)
 		int terrainTile = 0;
-		HAPI_AttributeInfo tileAttrInfo = new HAPI_AttributeInfo();
-		int[] tileAttrData = new int[0];
-		if (!HEU_GeneralUtility.GetAttribute(session, nodeID, scatterInstancerParts[i].id, HEU_Defines.HAPI_HEIGHTFIELD_TILE_ATTR, ref tileAttrInfo, ref tileAttrData, session.GetAttributeIntData))
-		{
-		    // Try part 0 (the height layer) to get the tile index.
-		    // For scatter points merged with HF, in some cases the part ID doesn't have the tile attribute.
-		    HEU_GeneralUtility.GetAttribute(session, nodeID, 0, HEU_Defines.HAPI_HEIGHTFIELD_TILE_ATTR, ref tileAttrInfo, ref tileAttrData, session.GetAttributeIntData);
-		}
-
-		if (tileAttrData != null && tileAttrData.Length > 0)
-		{
-		    terrainTile = tileAttrData[0];
-		}
+		HEU_TerrainUtility.GetAttributeTile(session, nodeID,  scatterInstancerParts[i].id, out terrainTile);
 
 		// Find the volume layer associated with this part using the terrain tile index
 		HEU_LoadBufferVolume volumeBuffer = GetLoadBufferVolumeFromTileIndex(terrainTile, volumeBuffers);
@@ -920,7 +920,12 @@ namespace HoudiniEngineUnity
 		    continue;
 		}
 
-		HEU_TerrainUtility.PopulateScatterTrees(session, nodeID, scatterInstancerParts[i].id, scatterInstancerParts[i].pointCount, ref volumeBuffer._scatterTrees);
+		bool throwWarningIfNoTileAttribute = volumeBuffers.Count > 1;
+
+		foreach (HEU_LoadBufferVolume volume in volumeBuffers)
+		{
+		    HEU_TerrainUtility.PopulateScatterTrees(session, nodeID, scatterInstancerParts[i].id, scatterInstancerParts[i].pointCount, ref volume._scatterTrees, throwWarningIfNoTileAttribute);
+		}
 	    }
 
 	    return true;
@@ -989,7 +994,7 @@ namespace HoudiniEngineUnity
 	
 
 	public bool GenerateMeshBuffers(HEU_SessionBase session, HAPI_NodeId nodeID, List<HAPI_PartInfo> meshParts,
-		bool bSplitPoints, bool bUseLODGroups, bool bGenerateUVs, bool bGenerateTangents, bool bGenerateNormals,
+		bool bSplitPoints, bool bUseLODGroups, bool bGenerateUVs, bool bGenerateTangents, bool bGenerateNormals, HEU_LoadObject loadObject,
 		out List<HEU_LoadBufferMesh> meshBuffers)
 	{
 	    meshBuffers = null;
@@ -999,7 +1004,7 @@ namespace HoudiniEngineUnity
 	    }
 
 	    bool bSuccess = true;
-	    string assetCacheFolderPath = "";
+	    string assetCacheFolderPath = _assetCachePath;
 
 	    meshBuffers = new List<HEU_LoadBufferMesh>();
 
@@ -1014,12 +1019,14 @@ namespace HoudiniEngineUnity
 		{
 		    List<HEU_MaterialData> materialCache = new List<HEU_MaterialData>();
 
-		    HEU_GenerateGeoCache geoCache = HEU_GenerateGeoCache.GetPopulatedGeoCache(session, -1, geoID, partID, bUseLODGroups,
+		    int assetId = loadObject != null ? loadObject._displayNodeID : -1;
+
+		    HEU_GenerateGeoCache geoCache = HEU_GenerateGeoCache.GetPopulatedGeoCache(session, assetId, geoID, partID, bUseLODGroups,
 			    materialCache, assetCacheFolderPath);
 		    if (geoCache == null)
 		    {
 			// Failed to get necessary info for generating geometry.
-			SetLog(HEU_LoadData.LoadStatus.ERROR, string.Format("Failed to generate geometry cache for part: {0}", partName));
+			AppendLog(HEU_LoadData.LoadStatus.ERROR, string.Format("Failed to generate geometry cache for part: {0}", partName));
 			continue;
 		    }
 
@@ -1058,7 +1065,7 @@ namespace HoudiniEngineUnity
 		    }
 		    else
 		    {
-			SetLog(HEU_LoadData.LoadStatus.ERROR, string.Format("Failed to generated geometry for part: {0}", partName));
+			AppendLog(HEU_LoadData.LoadStatus.ERROR, string.Format("Failed to generated geometry for part: {0}", partName));
 		    }
 		}
 	    }
@@ -1097,7 +1104,7 @@ namespace HoudiniEngineUnity
 		}
 		else
 		{
-		    SetLog(HEU_LoadData.LoadStatus.ERROR, string.Format("Invalid instanced part count: {0} for part {1}", partInfo.instancedPartCount, partName));
+		    AppendLog(HEU_LoadData.LoadStatus.ERROR, string.Format("Invalid instanced part count: {0} for part {1}", partInfo.instancedPartCount, partName));
 		    continue;
 		}
 
@@ -1119,7 +1126,7 @@ namespace HoudiniEngineUnity
 	    HAPI_Transform[] instanceTransforms = new HAPI_Transform[partInfo.instanceCount];
 	    if (!HEU_GeneralUtility.GetArray3Arg(geoID, partID, HAPI_RSTOrder.HAPI_SRT, session.GetInstancerPartTransforms, instanceTransforms, 0, partInfo.instanceCount))
 	    {
-		SetLog(HEU_LoadData.LoadStatus.ERROR, string.Format("Unable to get instance transforms for part {0}", partName));
+		AppendLog(HEU_LoadData.LoadStatus.ERROR, string.Format("Unable to get instance transforms for part {0}", partName));
 		return null;
 	    }
 
@@ -1127,7 +1134,7 @@ namespace HoudiniEngineUnity
 	    HAPI_NodeId[] instanceNodeIDs = new HAPI_NodeId[partInfo.instancedPartCount];
 	    if (!HEU_GeneralUtility.GetArray2Arg(geoID, partID, session.GetInstancedPartIds, instanceNodeIDs, 0, partInfo.instancedPartCount))
 	    {
-		SetLog(HEU_LoadData.LoadStatus.ERROR, string.Format("Unable to get instance node IDs for part {0}", partName));
+		AppendLog(HEU_LoadData.LoadStatus.ERROR, string.Format("Unable to get instance node IDs for part {0}", partName));
 		return null;
 	    }
 
@@ -1199,14 +1206,14 @@ namespace HoudiniEngineUnity
 		else
 		{
 		    // Other attribute owned types are unsupported
-		    SetLog(HEU_LoadData.LoadStatus.ERROR, string.Format("Unsupported attribute owner {0} for attribute {1}",
+		    AppendLog(HEU_LoadData.LoadStatus.ERROR, string.Format("Unsupported attribute owner {0} for attribute {1}",
 			    unityInstanceAttrInfo.owner, unityInstanceAttrName));
 		    return null;
 		}
 
 		if (assetPaths == null)
 		{
-		    SetLog(HEU_LoadData.LoadStatus.ERROR, "Unable to get instanced asset path from attribute!");
+		    AppendLog(HEU_LoadData.LoadStatus.ERROR, "Unable to get instanced asset path from attribute!");
 		    return null;
 		}
 
@@ -1230,12 +1237,12 @@ namespace HoudiniEngineUnity
 	    else if (instanceAttrInfo.exists)
 	    {
 		// Object instancing via internal object path is not supported
-		SetLog(HEU_LoadData.LoadStatus.ERROR, string.Format("Object instancing is not supported (part {0})!", partName));
+		AppendLog(HEU_LoadData.LoadStatus.ERROR, string.Format("Object instancing is not supported (part {0})!", partName));
 	    }
 	    else
 	    {
 		// Standard object instancing via single Houdini object is not supported
-		SetLog(HEU_LoadData.LoadStatus.ERROR, string.Format("Object instancing is not supported (part {0})!", partName));
+		AppendLog(HEU_LoadData.LoadStatus.ERROR, string.Format("Object instancing is not supported (part {0})!", partName));
 	    }
 
 	    return null;
@@ -1254,6 +1261,11 @@ namespace HoudiniEngineUnity
 	    return null;
 	}
 
+	public static string GetValidAssetCacheFolderPath(string name)
+	{
+	    return HEU_AssetDatabase.CreateAssetCacheFolder(name);
+	}
+
 	#endregion
 
 	#endregion
@@ -1265,6 +1277,8 @@ namespace HoudiniEngineUnity
 	private HEU_SessionBase _session;
 
 	private HEU_GenerateOptions _generateOptions;
+
+	protected string _assetCachePath = "";
 
 	// Load
 	public enum LoadType
@@ -1291,7 +1305,7 @@ namespace HoudiniEngineUnity
 	    }
 	    public LoadStatus _loadStatus;
 
-	    public string _logStr;
+	    public StringBuilder _logStr;
 
 	    public HEU_SessionBase _session;
 

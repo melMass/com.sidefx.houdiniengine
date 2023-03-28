@@ -34,6 +34,9 @@ namespace HoudiniEngineUnity
 {
     /////////////////////////////////////////////////////////////////////////////////////////////////////////////////
     // Typedefs (copy these from HEU_Common.cs)
+    using HAPI_UInt8 = System.Byte;
+    using HAPI_Int8 = System.SByte;
+    using HAPI_Int16 = System.Int16;
     using HAPI_Int64 = System.Int64;
     using HAPI_StringHandle = System.Int32;
     using HAPI_ErrorCodeBits = System.Int32;
@@ -186,7 +189,7 @@ namespace HoudiniEngineUnity
 	    _sessionErrorMsg = msg;
 	    if (bLogError && LogErrorOverride)
 	    {
-		Debug.LogError(_sessionErrorMsg);
+		HEU_Logger.LogError(_sessionErrorMsg);
 	    }
 	}
 
@@ -453,6 +456,17 @@ namespace HoudiniEngineUnity
 	}
 
 	/// <summary>
+	/// Compose the node cook result string
+	/// </summary>
+	/// <param name="nodeId"> The node to parse </param>
+	/// <param name="verbosity"> The status verbosity. </param>
+	/// <returns>True if successfully queried status string</returns>
+	public virtual string ComposeNodeCookResult(HAPI_NodeId nodeId, HAPI_StatusVerbosity verbosity)
+	{
+	    return "";
+	}
+
+	/// <summary>
 	/// Returns environment value in Houdini Engine.
 	/// </summary>
 	/// <param name="intType">Type of environment variable</param>
@@ -584,6 +598,12 @@ namespace HoudiniEngineUnity
 	    return false;
 	}
 
+
+	public virtual bool CookNodeWithOptions(HAPI_NodeId nodeID, HAPI_CookOptions cookOptions)
+	{
+	    return false;
+	}
+
 	/// <summary>
 	/// Rename an existing node.
 	/// </summary>
@@ -679,7 +699,7 @@ namespace HoudiniEngineUnity
 	/// <param name="nodeID">The node to retrieve the asset info for</param>
 	/// <param name="assetInfo">The asset info structure to populate</param>
 	/// <returns>True if successfully queried the asset info</returns>
-	public virtual bool GetAssetInfo(HAPI_NodeId nodeID, ref HAPI_AssetInfo assetInfo)
+	public virtual bool GetAssetInfo(HAPI_NodeId nodeID, ref HAPI_AssetInfo assetInfo, bool bLogError = true)
 	{
 	    return false;
 	}
@@ -730,7 +750,7 @@ namespace HoudiniEngineUnity
 	/// <param name="bRecursive">Whether or not to compose the list recursively</param>
 	/// <param name="count">Number of child nodes composed</param>
 	/// <returns>True if successfully composed the child node list</returns>
-	public virtual bool ComposeChildNodeList(HAPI_NodeId parentNodeID, HAPI_NodeTypeBits nodeTypeFilter, HAPI_NodeFlagsBits nodeFlagFilter, bool bRecursive, ref int count)
+	public virtual bool ComposeChildNodeList(HAPI_NodeId parentNodeID, HAPI_NodeTypeBits nodeTypeFilter, HAPI_NodeFlagsBits nodeFlagFilter, bool bRecursive, ref int count, bool bLogError = true)
 	{
 	    return false;
 	}
@@ -742,7 +762,7 @@ namespace HoudiniEngineUnity
 	/// <param name="childNodeIDs">Array to store the child node IDs. If null, will create array of size count. If non-null, size must at least be count.</param>
 	/// <param name="count">Number of children in the composed list. Must match the count returned by ComposeChildNodeList</param>
 	/// <returns>True if successfully retrieved the child node list</returns>
-	public virtual bool GetComposedChildNodeList(HAPI_NodeId parentNodeID, HAPI_NodeId[] childNodeIDs, int count)
+	public virtual bool GetComposedChildNodeList(HAPI_NodeId parentNodeID, HAPI_NodeId[] childNodeIDs, int count, bool bLogError = true)
 	{
 	    return false;
 	}
@@ -862,13 +882,25 @@ namespace HoudiniEngineUnity
 	    return false;
 	}
 
+
+	public virtual bool GetOutputGeoCount(HAPI_NodeId nodeID, out int count, bool bLogError = false)
+	{
+	    count = 0;
+	    return false;
+	}
+
+	public virtual bool GetOutputGeoInfos(HAPI_NodeId nodeID, ref HAPI_GeoInfo[] geoInfosArray, int count, bool bLogError = false)
+	{
+	    return false;
+	}
+
 	/// <summary>
 	/// Get the geometry info on a SOP node.
 	/// </summary>
 	/// <param name="nodeID">The SOP node ID</param>
 	/// <param name="geoInfo">Geo info to populate</param>
 	/// <returns>True if successfully queried the geo info</returns>
-	public virtual bool GetGeoInfo(HAPI_NodeId nodeID, ref HAPI_GeoInfo geoInfo)
+	public virtual bool GetGeoInfo(HAPI_NodeId nodeID, ref HAPI_GeoInfo geoInfo, bool bLogError = true)
 	{
 	    return false;
 	}
@@ -945,6 +977,12 @@ namespace HoudiniEngineUnity
 	    return false;
 	}
 
+	public virtual bool GetAttributeFloatArrayData(HAPI_NodeId nodeID, HAPI_PartId partID, string name, ref HAPI_AttributeInfo attrInfo,
+		ref float[] data, int dataLength, ref int[] sizesArray, int start, int sizesLength)
+	{
+	    return false;
+	}
+
 	public virtual bool GetAttributeFloat64Data(HAPI_NodeId nodeID, HAPI_PartId partID, string name, ref HAPI_AttributeInfo attributeInfo, [Out] double[] data, int start, int length)
 	{
 	    return false;
@@ -962,6 +1000,21 @@ namespace HoudiniEngineUnity
 	/// <param name="length">Must be at least 0 and at most HAPI_AttributeInfo::count - start.</param>
 	/// <returns>True if successfully queried the atttribute int data</returns>
 	public virtual bool GetAttributeIntData(HAPI_NodeId nodeID, HAPI_PartId partID, string name, ref HAPI_AttributeInfo attributeInfo, [Out] int[] data, int start, int length)
+	{
+	    return false;
+	}
+
+	public virtual bool GetAttributeUInt8Data(HAPI_NodeId nodeID, HAPI_PartId partID, string name, ref HAPI_AttributeInfo attributeInfo, [Out] HAPI_UInt8[] data, int start, int length)
+	{
+	    return false;
+	}
+
+	public virtual bool GetAttributeInt8Data(HAPI_NodeId nodeID, HAPI_PartId partID, string name, ref HAPI_AttributeInfo attributeInfo, [Out] HAPI_Int8[] data, int start, int length)
+	{
+	    return false;
+	}
+
+	public virtual bool GetAttributeInt16Data(HAPI_NodeId nodeID, HAPI_PartId partID, string name, ref HAPI_AttributeInfo attributeInfo, [Out] HAPI_Int16[] data, int start, int length)
 	{
 	    return false;
 	}
@@ -1041,6 +1094,11 @@ namespace HoudiniEngineUnity
 	    return false;
 	}
 
+	public virtual bool GetFaceCounts(HAPI_NodeId nodeID, HAPI_PartId partID, [Out] int[] faceCounts, int start, int length, bool bLogError)
+	{
+	    return false;
+	}
+
 	/// <summary>
 	/// Get the array containing the vertex-point associations where the ith element
 	/// in the array is the point index that the ith vertex associates with.
@@ -1090,6 +1148,21 @@ namespace HoudiniEngineUnity
 	    return false;
 	}
 
+	public virtual bool GetCurveOrders(HAPI_NodeId nodeID, HAPI_PartId partID, [Out] int[] orders, int start, int length)
+	{
+	    return false;
+	}
+
+	public virtual bool GetCurveKnots(HAPI_NodeId nodeID, HAPI_PartId partID, [Out] float[] knots, int start, int length)
+	{
+	    return false;
+	}
+
+	public virtual bool GetInputCurveInfo(HAPI_NodeId nodeID, HAPI_PartId partID, ref HAPI_InputCurveInfo inputCurveInfo)
+	{
+	    return false;
+	}
+
 	// GEOMETRY SETTERS -------------------------------------------------------------------------------------------
 
 	public virtual bool SetPartInfo(HAPI_NodeId nodeID, HAPI_PartId partID, ref HAPI_PartInfo partInfo)
@@ -1113,8 +1186,32 @@ namespace HoudiniEngineUnity
 	    return false;
 	}
 
+	public virtual bool SetAttributeInt8Data(HAPI_NodeId nodeID, HAPI_PartId partID, string name, ref HAPI_AttributeInfo attrInfo,
+		HAPI_Int8[] data, int start, int length)
+	{
+	    return false;
+	}
+
+	public virtual bool SetAttributeInt16Data(HAPI_NodeId nodeID, HAPI_PartId partID, string name, ref HAPI_AttributeInfo attrInfo,
+		HAPI_Int16[] data, int start, int length)
+	{
+	    return false;
+	}
+
+	public virtual bool SetAttributeInt64Data(HAPI_NodeId nodeID, HAPI_PartId partID, string name, ref HAPI_AttributeInfo attrInfo,
+		HAPI_Int64[] data, int start, int length)
+	{
+	    return false;
+	}
+
 	public virtual bool SetAttributeFloatData(HAPI_NodeId nodeID, HAPI_PartId partID, string name, ref HAPI_AttributeInfo attrInfo,
 		float[] data, int start, int length)
+	{
+	    return false;
+	}
+
+	public virtual bool SetAttributeFloatArrayData(HAPI_NodeId nodeID, HAPI_PartId partID, string name, ref HAPI_AttributeInfo attrInfo,
+		float[] data, int dataLength, int[] sizesArray, int start, int sizesLength)
 	{
 	    return false;
 	}
@@ -1151,6 +1248,42 @@ namespace HoudiniEngineUnity
 	}
 
 	public virtual bool RevertGeo(HAPI_NodeId nodeID)
+	{
+	    return false;
+	}
+
+	public virtual bool SetCurveInfo(HAPI_NodeId nodeID, HAPI_PartId partID, ref HAPI_CurveInfo curveInfo)
+	{
+	    return false;
+	}
+
+	public virtual bool SetCurveCounts(HAPI_NodeId nodeID, HAPI_PartId partID, int[] counts, int start, int length)
+	{
+	    return false;
+	}
+
+	public virtual bool SetCurveOrders(HAPI_NodeId nodeID, HAPI_PartId partID, int[] orders, int start, int length)
+	{
+	    return false;
+	}
+
+	public virtual bool SetCurveKnots(HAPI_NodeId nodeID, HAPI_PartId partID, float[] knots, int start, int length)
+	{
+	    return false;
+	}
+
+	public virtual bool SetInputCurveInfo(HAPI_NodeId nodeID, HAPI_PartId partID, ref HAPI_InputCurveInfo curveInfo)
+	{
+	    return false;
+	}
+
+	public virtual bool SetInputCurvePositions(HAPI_NodeId nodeID, HAPI_PartId partID, float[] positionsArray, int start, int length)
+	{
+	    return false;
+	}
+
+	public virtual bool SetInputCurvePositionsRotationsScales(HAPI_NodeId nodeID, HAPI_PartId partID, float[] positionsArray, int start, int length
+	    , float[] rotationsArray, int rotationsStart, int rotationsLength, float[] scalesArray, int scalesStart, int scalesLength)
 	{
 	    return false;
 	}
@@ -1380,7 +1513,7 @@ namespace HoudiniEngineUnity
 
 	public virtual bool GetParmIDFromName(HAPI_NodeId nodeID, string parmName, out HAPI_ParmId parmID)
 	{
-	    parmID = HEU_Defines.HAPI_INVALID_PARM_ID;
+	    parmID = HEU_HAPIConstants.HAPI_INVALID_PARM_ID;
 	    return false;
 	}
 
@@ -1393,6 +1526,12 @@ namespace HoudiniEngineUnity
 	// INPUT NODES ------------------------------------------------------------------------------------------------
 
 	public virtual bool CreateInputNode(out HAPI_NodeId nodeID, string name)
+	{
+	    nodeID = HEU_Defines.HEU_INVALID_NODE_ID;
+	    return false;
+	}
+
+	public virtual bool CreateInputCurveNode(out HAPI_NodeId nodeID, string name)
 	{
 	    nodeID = HEU_Defines.HEU_INVALID_NODE_ID;
 	    return false;
@@ -1573,6 +1712,11 @@ namespace HoudiniEngineUnity
 	}
 
 	public virtual bool SetSessionSyncInfo(ref HAPI_SessionSyncInfo syncInfo)
+	{
+	    return false;
+	}
+
+	public virtual bool SetNodeDisplay(HAPI_NodeId node_id, int onOff)
 	{
 	    return false;
 	}

@@ -53,9 +53,10 @@ namespace HoudiniEngineUnity
 	/// <param name="gameObject">The target GameObject containing the Terrain component</param>
 	/// <param name="terrainData">A valid TerrainData to use, or if empty, a new one is created and populated</param>
 	/// <param name="volumePositionOffset">Heightfield offset</param>
+	/// <param name="bakedMaterialPath">Folder path for caching material output</param>
 	/// <returns>True if successfully popupated the terrain</returns>
 	public static bool GenerateTerrainFromVolume(HEU_SessionBase session, ref HAPI_VolumeInfo volumeInfo, HAPI_NodeId geoID, HAPI_PartId partID,
-		GameObject gameObject, ref TerrainData terrainData, out Vector3 volumePositionOffset, ref Terrain terrain)
+		GameObject gameObject, ref TerrainData terrainData, out Vector3 volumePositionOffset, ref Terrain terrain, string bakedMaterialPath)
 	{
 	    volumePositionOffset = Vector3.zero;
 
@@ -85,13 +86,13 @@ namespace HoudiniEngineUnity
 		float terrainSizeX = Mathf.Round((volumeInfo.xLength - 1) * gridSpacingX);
 		float terrainSizeY = Mathf.Round((volumeInfo.yLength - 1) * gridSpacingY);
 
-		//Debug.LogFormat("volumeInfo: {0}x{1}", volumeInfo.xLength, volumeInfo.yLength);
-		//Debug.LogFormat("GS = {0}x{1}, Size = {2}x{3}", gridSpacingX, gridSpacingY, terrainSizeX, terrainSizeY);
+		//HEU_Logger.LogFormat("volumeInfo: {0}x{1}", volumeInfo.xLength, volumeInfo.yLength);
+		//HEU_Logger.LogFormat("GS = {0}x{1}, Size = {2}x{3}", gridSpacingX, gridSpacingY, terrainSizeX, terrainSizeY);
 
-		//Debug.LogFormat("HeightField Pos:{0}, Scale:{1}", position, scale.ToString("{0.00}"));
-		//Debug.LogFormat("HeightField tileSize:{0}, xLength:{1}, yLength:{2}", volumeInfo.tileSize.ToString("{0.00}"), volumeInfo.xLength.ToString("{0.00}"), volumeInfo.yLength.ToString("{0.00}"));
-		//Debug.LogFormat("HeightField Terrain Size x:{0}, y:{1}", terrainSizeX.ToString("{0.00}"), terrainSizeY.ToString("{0.00}"));
-		//Debug.LogFormat("HeightField minX={0}, minY={1}, minZ={2}", volumeInfo.minX.ToString("{0.00}"), volumeInfo.minY.ToString("{0.00}"), volumeInfo.minZ.ToString("{0.00}"));
+		//HEU_Logger.LogFormat("HeightField Pos:{0}, Scale:{1}", position, scale.ToString("{0.00}"));
+		//HEU_Logger.LogFormat("HeightField tileSize:{0}, xLength:{1}, yLength:{2}", volumeInfo.tileSize.ToString("{0.00}"), volumeInfo.xLength.ToString("{0.00}"), volumeInfo.yLength.ToString("{0.00}"));
+		//HEU_Logger.LogFormat("HeightField Terrain Size x:{0}, y:{1}", terrainSizeX.ToString("{0.00}"), terrainSizeY.ToString("{0.00}"));
+		//HEU_Logger.LogFormat("HeightField minX={0}, minY={1}, minZ={2}", volumeInfo.minX.ToString("{0.00}"), volumeInfo.minY.ToString("{0.00}"), volumeInfo.minZ.ToString("{0.00}"));
 
 		bool bNewTerrain = false;
 		bool bNewTerrainData = false;
@@ -132,7 +133,7 @@ namespace HoudiniEngineUnity
 		// Look up terrain material, if specified, on the height layer
 		string specifiedTerrainMaterialName = HEU_GeneralUtility.GetMaterialAttributeValueFromPart(session,
 			geoID, partID);
-		SetTerrainMaterial(terrain, specifiedTerrainMaterialName);
+		SetTerrainMaterial(terrain, specifiedTerrainMaterialName, bakedMaterialPath);
 
 #if !HEU_TERRAIN_COLLIDER_DISABLED
 		collider.terrainData = terrainData;
@@ -154,24 +155,14 @@ namespace HoudiniEngineUnity
 		const int UNITY_MINIMUM_HEIGHTMAP_RESOLUTION = 33;
 		if (heightMapResolution < UNITY_MINIMUM_HEIGHTMAP_RESOLUTION || heightMapResolution < UNITY_MINIMUM_HEIGHTMAP_RESOLUTION)
 		{
-		    Debug.LogWarningFormat("Unity Terrain has a minimum heightmap resolution of {0}. This HDA heightmap size is {1}x{2}."
+		    HEU_Logger.LogWarningFormat("Unity Terrain has a minimum heightmap resolution of {0}. This HDA heightmap size is {1}x{2}."
 			    + "\nPlease resample the heightmap resolution to a value higher than this.",
 			    UNITY_MINIMUM_HEIGHTMAP_RESOLUTION, heightMapResolution, heightMapResolution);
 		    return false;
 		}
 
 		terrainData.heightmapResolution = heightMapResolution;
-		int terrainResizedDelta = terrainData.heightmapResolution - heightMapResolution;
-		if (terrainResizedDelta < 0)
-		{
-		    Debug.LogWarningFormat("Note that Unity automatically resized terrain resolution to {0} from {1}. Use terrain size of power of two plus 1, and grid spacing of 2.", heightMapResolution, terrainData.heightmapResolution);
-		    heightMapResolution = terrainData.heightmapResolution;
-		}
-		else if (terrainResizedDelta > 0)
-		{
-		    Debug.LogErrorFormat("Unsupported terrain size. Use terrain size of power of two plus 1, and grid spacing of 2. Given size is {0} but Unity resized it to {1}.", heightMapResolution, terrainData.heightmapResolution);
-		    return false;
-		}
+
 
 		int mapWidth = volumeInfo.xLength;
 		int mapHeight = volumeInfo.yLength;
@@ -185,6 +176,21 @@ namespace HoudiniEngineUnity
 		float[] normalizedHeights = GetNormalizedHeightmapFromPartWithMinMax(session, geoID, partID,
 			volumeInfo.xLength, volumeInfo.yLength, ref minHeight, ref maxHeight, ref heightRange,
 			bUseHeightRangeOverride);
+
+		int terrainResizedDelta = terrainData.heightmapResolution - heightMapResolution;
+		if (terrainResizedDelta < 0)
+		{
+		    HEU_Logger.LogWarningFormat("Note that Unity automatically resized terrain resolution to {0} from {1}. Use terrain size of power of two plus 1, and grid spacing of 2.", heightMapResolution, terrainData.heightmapResolution);
+		    float[] resampledHeights = HEU_TerrainUtility.ResampleData(normalizedHeights, heightMapResolution, heightMapResolution, terrainData.heightmapResolution, terrainData.heightmapResolution);
+
+		    normalizedHeights = resampledHeights;
+		    heightMapResolution = terrainData.heightmapResolution;
+		}
+		else if (terrainResizedDelta > 0)
+		{
+		    HEU_Logger.LogWarningFormat("Unsupported terrain size. Use terrain size of power of two plus 1, and grid spacing of 2. Given size is {0} but Unity resized it to {1}.", heightMapResolution, terrainData.heightmapResolution);
+		}
+
 		float[,] unityHeights = ConvertHeightMapHoudiniToUnity(heightMapResolution, heightMapResolution, normalizedHeights);
 
 		// The terrainData.baseMapResolution is not set here, but rather left to whatever default Unity uses
@@ -220,10 +226,10 @@ namespace HoudiniEngineUnity
 		float xmin, xmax, zmin, zmax, ymin, ymax, xcenter, ycenter, zcenter;
 		session.GetVolumeBounds(geoID, partID, out xmin, out ymin, out zmin, out xmax, out ymax, out zmax, out xcenter,
 			out ycenter, out zcenter);
-		//Debug.LogFormat("xmin: {0}, xmax: {1}, ymin: {2}, ymax: {3}, zmin: {4}, zmax: {5}, xc: {6}, yc: {7}, zc: {8}",
+		//HEU_Logger.LogFormat("xmin: {0}, xmax: {1}, ymin: {2}, ymax: {3}, zmin: {4}, zmax: {5}, xc: {6}, yc: {7}, zc: {8}",
 		//	xmin, xmax, ymin, ymax, zmin, zmax, xcenter, ycenter, zcenter);
 
-		//Debug.LogFormat("heightMapResolution: {0}, mapWidth: {1}, mapHeight: {2}", heightMapResolution, mapWidth, mapHeight);
+		//HEU_Logger.LogFormat("heightMapResolution: {0}, mapWidth: {1}, mapHeight: {2}", heightMapResolution, mapWidth, mapHeight);
 
 		// Use y position from attribute if user has set it
 		float ypos = position.y + minHeight;
@@ -241,7 +247,7 @@ namespace HoudiniEngineUnity
 	    }
 	    else
 	    {
-		Debug.LogWarning("Non-heightfield volume type not supported!");
+		HEU_Logger.LogWarning("Non-heightfield volume type not supported!");
 	    }
 
 	    return false;
@@ -252,26 +258,95 @@ namespace HoudiniEngineUnity
 	/// Currently sets the default Terrain material from the plugin settings, if its valid.
 	/// </summary>
 	/// <param name="terrain">The terrain to set material for</param>
-	public static void SetTerrainMaterial(Terrain terrain, string specifiedMaterialName)
+	public static void SetTerrainMaterial(Terrain terrain, string specifiedMaterialName, string bakedMaterialPath = "")
 	{
 	    // Use material specified in Plugin settings.
 	    string terrainMaterialPath = string.IsNullOrEmpty(specifiedMaterialName) ? HEU_PluginSettings.DefaultTerrainMaterial :
-		    specifiedMaterialName;
+	        specifiedMaterialName;
 	    if (!string.IsNullOrEmpty(terrainMaterialPath))
 	    {
-		Material material = HEU_MaterialFactory.LoadUnityMaterial(terrainMaterialPath);
-		if (material != null)
+	        Material material = HEU_MaterialFactory.LoadUnityMaterial(terrainMaterialPath);
+	        if (material != null)
+	        {
+	            #if UNITY_2019_2_OR_NEWER
+	                terrain.materialTemplate = material;
+	            #else
+	                terrain.materialType = Terrain.MaterialType.Custom;
+	                terrain.materialTemplate = material;
+	            #endif
+	        } 
+	        else
+	        {
+	            HEU_Logger.LogWarning("Warning: Specified material does not exist!");
+	        }
+	    }
+	    else
+	    {
+		Material material = null;
+
+		// Create new material with the default shader
+		if (!string.IsNullOrEmpty(bakedMaterialPath))
 		{
-#if UNITY_2019_2_OR_NEWER
-		    terrain.materialTemplate = material;
-#else
-					terrain.materialType = Terrain.MaterialType.Custom;
-					terrain.materialTemplate = material;
-#endif
+		    material = HEU_MaterialFactory.GetNewMaterialWithShader(bakedMaterialPath, GetDefaultTerrainShaderName(), terrain.gameObject.name + "-Material", false);
 		}
+
+		// Use the hardcoded paths as a last resort
+		if (material == null)
+		{
+		    string defaultTerrainMaterialPath = GetDefaultTerrainMaterialPath();
+		    material = HEU_MaterialFactory.LoadUnityMaterial(defaultTerrainMaterialPath);
+		}
+		
+	        if (material != null)
+	        {
+	            #if UNITY_2019_2_OR_NEWER
+	                terrain.materialTemplate = material;
+	            #else
+	                terrain.materialType = Terrain.MaterialType.Custom;
+	                terrain.materialTemplate = material;
+	            #endif
+	        } 
+	        else
+	        {
+	            HEU_Logger.LogWarning("Warning: Specified material does not exist!");
+	        }
 	    }
 
 	    // TODO: If none specified, guess based on Render settings?
+	}
+
+	public static string GetDefaultTerrainShaderName()
+	{
+	    HEU_PipelineType pipeline = HEU_RenderingPipelineDefines.GetPipeline();
+	    if (pipeline == HEU_PipelineType.HDRP)
+	    {
+		return HEU_Defines.DEFAULT_TERRAIN_SHADER_HDRP;
+	    }
+	    else if (pipeline == HEU_PipelineType.URP)
+	    {
+		return HEU_Defines.DEFAULT_TERRAIN_SHADER_URP;
+	    }
+	    else
+	    {
+		return HEU_Defines.DEFAULT_TERRAIN_SHADER;
+	    }
+	}
+
+	public static string GetDefaultTerrainMaterialPath()
+	{
+	    HEU_PipelineType pipeline = HEU_RenderingPipelineDefines.GetPipeline();
+	    if (pipeline == HEU_PipelineType.HDRP)
+	    {
+		return HEU_Defines.DEFAULT_TERRAIN_MATERIAL_PATH_HDRP;
+	    }
+	    else if (pipeline == HEU_PipelineType.URP)
+	    {
+		return HEU_Defines.DEFAULT_TERRAIN_MATERIAL_PATH_URP;
+	    }
+	    else
+	    {
+		return HEU_Defines.DEFAULT_TERRAIN_MATERIAL_PATH;
+	    }
 	}
 
 	/// <summary>
@@ -313,7 +388,7 @@ namespace HoudiniEngineUnity
 	    }
 
 	    heightRange = (maxHeight - minHeight);
-	    //Debug.LogFormat("HF min={0}, max={1}, range={2}", minHeight, maxHeight, heightRange);
+	    //HEU_Logger.LogFormat("HF min={0}, max={1}, range={2}", minHeight, maxHeight, heightRange);
 
 	    // Use the override height range if user has set via attribute
 	    bool bHeightRangeOverriden = false;
@@ -333,12 +408,12 @@ namespace HoudiniEngineUnity
 		heightRange = 1f;
 	    }
 
-	    //Debug.LogFormat("{0} : {1}", HEU_SessionManager.GetString(volumeInfo.nameSH, session), heightRange);
+	    //HEU_Logger.LogFormat("{0} : {1}", HEU_SessionManager.GetString(volumeInfo.nameSH, session), heightRange);
 
 	    const int UNITY_MAX_HEIGHT_RANGE = 65536;
 	    if (Mathf.RoundToInt(heightRange) > UNITY_MAX_HEIGHT_RANGE)
 	    {
-		Debug.LogWarningFormat("Unity Terrain has maximum height range of {0}. This HDA height range is {1}, so it will be maxed out at {0}.\nPlease resize to within valid range!",
+		HEU_Logger.LogWarningFormat("Unity Terrain has maximum height range of {0}. This HDA height range is {1}, so it will be maxed out at {0}.\nPlease resize to within valid range!",
 			UNITY_MAX_HEIGHT_RANGE, Mathf.RoundToInt(heightRange));
 		heightRange = UNITY_MAX_HEIGHT_RANGE;
 	    }
@@ -347,12 +422,12 @@ namespace HoudiniEngineUnity
 	    int paddingWidth = heightMapWidth - volumeXLength;
 	    int paddingLeft = Mathf.CeilToInt(paddingWidth * 0.5f);
 	    int paddingRight = heightMapWidth - paddingLeft;
-	    //Debug.LogFormat("Padding: Width={0}, Left={1}, Right={2}", paddingWidth, paddingLeft, paddingRight);
+	    //HEU_Logger.LogFormat("Padding: Width={0}, Left={1}, Right={2}", paddingWidth, paddingLeft, paddingRight);
 
 	    int paddingHeight = heightMapHeight - volumeYLength;
 	    int paddingTop = Mathf.CeilToInt(paddingHeight * 0.5f);
 	    int paddingBottom = heightMapHeight - paddingTop;
-	    //Debug.LogFormat("Padding: Height={0}, Top={1}, Bottom={2}", paddingHeight, paddingTop, paddingBottom);
+	    //HEU_Logger.LogFormat("Padding: Height={0}, Top={1}, Bottom={2}", paddingHeight, paddingTop, paddingBottom);
 
 	    // Normalize the height values into the range between 0 and 1, inclusive.
 	    float inverseHeightRange = 1f / heightRange;
@@ -426,7 +501,7 @@ namespace HoudiniEngineUnity
 	    // Unity requires square size
 	    if (volumeXLength != volumeYLength)
 	    {
-		Debug.LogErrorFormat("Detail layer size must be square. Got {0}x{1} instead. Unable to apply detail layer.",
+		HEU_Logger.LogErrorFormat("Detail layer size must be square. Got {0}x{1} instead. Unable to apply detail layer.",
 			volumeXLength, volumeYLength);
 		return null;
 	    }
@@ -667,7 +742,7 @@ namespace HoudiniEngineUnity
 		    prototype._prefabPath = properties[0];
 		    if (properties.Length >= 2)
 		    {
-			// float.TryParse(properties[1], out prototype._bendfactor);
+			float.TryParse(properties[1], out prototype._bendfactor);
 		    }
 
 		    treePrototypes.Add(prototype);
@@ -686,7 +761,7 @@ namespace HoudiniEngineUnity
 	/// <param name="partID">Part (volume layer) ID</param>
 	/// <param name="pointCount">Number of expected scatter points</param>
 	public static void PopulateScatterTrees(HEU_SessionBase session, HAPI_NodeId geoID, HAPI_PartId partID, int pointCount,
-		ref HEU_VolumeScatterTrees scatterTrees)
+		ref HEU_VolumeScatterTrees scatterTrees, bool throwWarningIfNoTileAttribute)
 	{
 	    // The HEU_VolumeScatterTrees might already have been created when the volumecache was queried.
 	    // The "height" layer might have had prototype data which is set in _scatterTrees.
@@ -706,18 +781,42 @@ namespace HoudiniEngineUnity
 		}
 		else
 		{
-		    Debug.LogWarningFormat("Scatter instance index count for attribute {0} is not valid. Expected {1} but got {2}",
+		    HEU_Logger.LogWarningFormat("Scatter instance index count for attribute {0} is not valid. Expected {1} but got {2}",
 			    HEU_Defines.HEIGHTFIELD_TREEINSTANCE_PROTOTYPEINDEX, pointCount, (indices != null ? indices.Length : 0));
 		}
+	    }
+
+	    HAPI_AttributeInfo tileAttrInfo = new HAPI_AttributeInfo();
+	    int[] tiles = new int[0];
+	    if (!HEU_GeneralUtility.GetAttribute(session, geoID, partID, HEU_Defines.HAPI_HEIGHTFIELD_TILE_ATTR, ref tileAttrInfo, ref tiles, session.GetAttributeIntData))
+	    {
+		if (!HEU_GeneralUtility.GetAttribute(session, geoID, partID, HEU_Defines.HEIGHTFIELD_UNITY_TILE, ref tileAttrInfo, ref tiles, session.GetAttributeIntData))
+		{
+		    if (throwWarningIfNoTileAttribute)
+		    {
+		        HEU_Logger.LogWarning("Multiple tiles detected but attribute tile or unity_hf_tile was not found! This will cause tree instances to default to the first tile. Set unity_hf_tile to the tile index to prevent this.");
+		    }
+
+		    tiles = new int[scatterTrees._prototypeIndices.Length];
+		    for (int i = 0; i < scatterTrees._prototypeIndices.Length; i++)
+		    {
+		        tiles[i] = -1;
+		    }
+		}
+	    }
+
+	    if (tiles != null && tiles.Length == scatterTrees._prototypeIndices.Length)
+	    {
+		scatterTrees._terrainTiles = tiles;
 	    }
 
 	    // Using the UVs as position of the instances, since they are properly mapped to the terrain tile.
 	    // Also getting other attributes for the TreeInstances, if they are set.
 	    HAPI_AttributeInfo uvAttrInfo = new HAPI_AttributeInfo();
 	    float[] uvs = new float[0];
-	    if (!HEU_GeneralUtility.GetAttribute(session, geoID, partID, HEU_Defines.HAPI_ATTRIB_UV, ref uvAttrInfo, ref uvs, session.GetAttributeFloatData))
+	    if (!HEU_GeneralUtility.GetAttribute(session, geoID, partID, HEU_HAPIConstants.HAPI_ATTRIB_UV, ref uvAttrInfo, ref uvs, session.GetAttributeFloatData))
 	    {
-		Debug.LogWarning("UVs for scatter instances not found or valid.");
+		HEU_Logger.LogWarning("UVs for scatter instances not found or valid.");
 	    }
 
 	    if (uvs != null && uvs.Length == (pointCount * uvAttrInfo.tupleSize))
@@ -740,7 +839,7 @@ namespace HoudiniEngineUnity
 		// Get color
 		HAPI_AttributeInfo colorAttrInfo = new HAPI_AttributeInfo();
 		float[] colors = new float[0];
-		HEU_GeneralUtility.GetAttribute(session, geoID, partID, HEU_Defines.HAPI_ATTRIB_COLOR, ref colorAttrInfo, ref colors, session.GetAttributeFloatData);
+		HEU_GeneralUtility.GetAttribute(session, geoID, partID, HEU_HAPIConstants.HAPI_ATTRIB_COLOR, ref colorAttrInfo, ref colors, session.GetAttributeFloatData);
 
 		// Get lightmap color
 		HAPI_AttributeInfo lightmapColorAttrInfo = new HAPI_AttributeInfo();
@@ -822,7 +921,7 @@ namespace HoudiniEngineUnity
 	/// <summary>
 	/// Apply the cached scatter prototypes and instances to the given TerrainData.
 	/// </summary>
-	public static void ApplyScatterTrees(TerrainData terrainData, HEU_VolumeScatterTrees scatterTrees)
+	public static void ApplyScatterTrees(TerrainData terrainData, HEU_VolumeScatterTrees scatterTrees, int tileIndex)
 	{
 #if UNITY_2019_1_OR_NEWER
 	    if (scatterTrees == null || scatterTrees._treePrototypInfos == null || scatterTrees._treePrototypInfos.Count == 0)
@@ -840,10 +939,10 @@ namespace HoudiniEngineUnity
 		{
 		    TreePrototype prototype = new TreePrototype();
 		    prototype.prefab = prefabGO;
-		    // prototype.bendFactor = scatterTrees._treePrototypInfos[i]._bendfactor;
+		    prototype.bendFactor = scatterTrees._treePrototypInfos[i]._bendfactor;
 		    treePrototypes.Add(prototype);
 
-		    //Debug.LogFormat("Added Tree Prototype: {0} - {1}", scatterTrees._treePrototypInfos[i]._prefabPath, scatterTrees._treePrototypInfos[i]._bendfactor);
+		    //HEU_Logger.LogFormat("Added Tree Prototype: {0} - {1}", scatterTrees._treePrototypInfos[i]._prefabPath, scatterTrees._treePrototypInfos[i]._bendfactor);
 		}
 	    }
 	    terrainData.treePrototypes = treePrototypes.ToArray();
@@ -856,6 +955,11 @@ namespace HoudiniEngineUnity
 
 		for (int i = 0; i < scatterTrees._positions.Length; ++i)
 		{
+		    if (scatterTrees._terrainTiles != null && i < scatterTrees._terrainTiles.Length && scatterTrees._terrainTiles[i] != -1 && scatterTrees._terrainTiles[i] != tileIndex)
+		    {
+		        continue;
+		    }
+
 		    treeInstances[i] = new TreeInstance();
 		    treeInstances[i].color = scatterTrees._colors != null ? scatterTrees._colors[i] : new Color32(255, 255, 255, 255);
 		    treeInstances[i].heightScale = scatterTrees._heightScales != null ? scatterTrees._heightScales[i] : 1f;
@@ -910,7 +1014,7 @@ namespace HoudiniEngineUnity
 	    if (HEU_GeneralUtility.GetAttributeFloatSingle(session, geoID, partID,
 		    HEU_Defines.HEIGHTFIELD_DETAIL_PROTOTYPE_BENDFACTOR, out fvalue))
 	    {
-		// detailPrototype._bendFactor = fvalue;
+		detailPrototype._bendFactor = fvalue;
 	    }
 
 	    Color color = Color.white;
@@ -1062,7 +1166,7 @@ namespace HoudiniEngineUnity
 
 	    if (heuDetailPrototypes.Count != convertedDetailMaps.Count)
 	    {
-		Debug.LogError("Number of volume detail layers differs from converted detail maps. Unable to apply detail layers.");
+		HEU_Logger.LogError("Number of volume detail layers differs from converted detail maps. Unable to apply detail layers.");
 		return;
 	    }
 
@@ -1089,7 +1193,12 @@ namespace HoudiniEngineUnity
 		    detailPrototype.usePrototypeMesh = false;
 		}
 
-		// detailPrototype.bendFactor = heuDetail._bendFactor;
+#if UNITY_2020_2_OR_NEWER
+		// _bendFactor is deprecated
+#else
+		detailPrototype.bendFactor = heuDetail._bendFactor;
+#endif
+
 		detailPrototype.dryColor = heuDetail._dryColor;
 		detailPrototype.healthyColor = heuDetail._healthyColor;
 		detailPrototype.maxHeight = heuDetail._maxHeight;
@@ -1231,6 +1340,75 @@ namespace HoudiniEngineUnity
 		return attrValue[0];
 	    }
 	    return "";
+	}
+	// Copied from HoudiniLandscapeTranslator::ResampleData
+	public static float[] ResampleData(float[] data, int oldWidth, int oldHeight, int newWidth, int newHeight)
+	{
+	    float[] result = new float[newWidth * newHeight];
+
+	    float xScale = (float)(oldWidth - 1) / (newWidth - 1);
+	    float yScale = (float)(oldHeight - 1) / (newHeight - 1);
+
+	    for (int y = 0; y < newHeight; y++)
+	    {
+		for (int x = 0; x < newWidth; x++)
+		{
+		    float oldY = y * yScale;
+		    float oldX = x * xScale;
+		    int x0 = Mathf.FloorToInt(oldX);
+		    int x1 = Mathf.Min(Mathf.FloorToInt(oldX) + 1, oldWidth - 1);
+		    int y0 = Mathf.FloorToInt(oldY);
+		    int y1 = Mathf.Min(Mathf.FloorToInt(oldY), oldHeight - 1);
+
+		    float original00 = data[y0 * oldWidth + x0];
+		    float original10 = data[y0 * oldWidth + x1];
+		    float original01 = data[y1 * oldWidth + x0];
+		    float original11 = data[y1 * oldWidth + x1];
+
+		    //float lerpedValue = Mathf.
+		    float lerpedValue = HEU_GeneralUtility.BiLerpf(original00, original10, original01, original11, HEU_GeneralUtility.Fractionalf(oldX), HEU_GeneralUtility.Fractionalf(oldY));
+		    result[y * newWidth + x] = lerpedValue;
+		}
+	    }
+
+	    return result;
+	}
+
+	public static bool GetAttributeTile(HEU_SessionBase session, HAPI_NodeId geoID, HAPI_PartId partID, out int outTileAttribute)
+	{
+	    outTileAttribute = 0;
+	    bool validTileIndex = false;
+	    HAPI_AttributeInfo info = new HAPI_AttributeInfo();
+	    int[] tileAttribute = new int[0];
+
+	    // tile
+	    if (session.GetAttributeInfo(geoID, partID, HEU_Defines.HAPI_HEIGHTFIELD_TILE_ATTR, HAPI_AttributeOwner.HAPI_ATTROWNER_PRIM, ref info) && info.exists)
+	    {
+		tileAttribute = new int[info.count];
+		if (session.GetAttributeIntData(geoID, partID, HEU_Defines.HAPI_HEIGHTFIELD_TILE_ATTR, ref info, tileAttribute, 0, info.count))
+		{
+		    validTileIndex = true;
+		    outTileAttribute = tileAttribute[0];
+		}
+	    }
+
+	    if (!validTileIndex)
+	    {
+		// Unity tile
+		if (session.GetAttributeInfo(geoID, partID, HEU_Defines.HEIGHTFIELD_UNITY_TILE, HAPI_AttributeOwner.HAPI_ATTROWNER_PRIM, ref info) && info.exists)
+		{
+		    tileAttribute = new int[info.count];
+		    if (session.GetAttributeIntData(geoID, partID, HEU_Defines.HEIGHTFIELD_UNITY_TILE, ref info, tileAttribute, 0, info.count))
+		    {
+		        validTileIndex = true;
+			outTileAttribute = tileAttribute[0];
+		    }
+		}
+	    }
+
+	    if (!validTileIndex) return false;
+
+	    return true;
 	}
     }
 

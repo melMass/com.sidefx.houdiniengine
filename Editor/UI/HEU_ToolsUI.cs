@@ -118,7 +118,8 @@ namespace HoudiniEngineUnity
 	private Vector3 _dragMouseStart;
 
 	// List of editable nodes and their attributes
-	public List<HEU_AttributesStore> _attributesStores = new List<HEU_AttributesStore>();
+	[SerializeField]
+	internal List<HEU_AttributesStore> _attributesStores = new List<HEU_AttributesStore>();
 
 	// Map of attributes and their serialized data
 	private Dictionary<HEU_AttributesStore, SerializedObject> _serializedAttributesStoresCache = new Dictionary<HEU_AttributesStore, SerializedObject>();
@@ -756,7 +757,16 @@ namespace HoudiniEngineUnity
 			}
 		    }
 
-		    Color newColor = EditorGUILayout.ColorField(_paintColorLabel, color);
+		    Color newColor;
+		    if (HEU_PluginSettings.UseHDRColor)
+		    {
+			newColor = EditorGUILayout.ColorField(new GUIContent(_paintColorLabel, "Paint color"), color, true, true, true);
+		    }
+		    else
+		    {
+			newColor = EditorGUILayout.ColorField(new GUIContent(_paintColorLabel, "Paint color"), color);
+		    }
+		    
 		    if (color != newColor)
 		    {
 			if (selectedToolsValuesProperty.arraySize >= 3)

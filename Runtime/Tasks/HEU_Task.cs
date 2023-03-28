@@ -133,7 +133,7 @@ namespace HoudiniEngineUnity
 		    {
 			// Add to post-load callback
 			_asset = newGO.GetComponent<HEU_HoudiniAssetRoot>()._houdiniAsset;
-			_asset._reloadEvent.AddListener(CookCompletedCallback);
+			_asset.ReloadDataEvent.AddListener(CookCompletedCallback);
 		    }
 		    else
 		    {
@@ -143,14 +143,14 @@ namespace HoudiniEngineUnity
 	    }
 	    else if (_buildType == BuildType.COOK)
 	    {
-		_asset._cookedEvent.RemoveListener(CookCompletedCallback);
-		_asset._cookedEvent.AddListener(CookCompletedCallback);
+		_asset.CookedDataEvent.RemoveListener(CookCompletedCallback);
+		_asset.CookedDataEvent.AddListener(CookCompletedCallback);
 		_asset.RequestCook(true, true, false, true);
 	    }
 	    else if (_buildType == BuildType.RELOAD)
 	    {
-		_asset._reloadEvent.RemoveListener(CookCompletedCallback);
-		_asset._reloadEvent.AddListener(CookCompletedCallback);
+		_asset.ReloadDataEvent.RemoveListener(CookCompletedCallback);
+		_asset.ReloadDataEvent.AddListener(CookCompletedCallback);
 		_asset.RequestReload(true);
 	    }
 	}
@@ -159,8 +159,8 @@ namespace HoudiniEngineUnity
 	{
 	    if (_asset != null)
 	    {
-		_asset._reloadEvent.RemoveListener(CookCompletedCallback);
-		_asset._cookedEvent.RemoveListener(CookCompletedCallback);
+		_asset.ReloadDataEvent.RemoveListener(CookCompletedCallback);
+		_asset.CookedDataEvent.RemoveListener(CookCompletedCallback);
 	    }
 	}
 
@@ -168,8 +168,8 @@ namespace HoudiniEngineUnity
 	{
 	    if (_asset != null)
 	    {
-		_asset._reloadEvent.RemoveListener(CookCompletedCallback);
-		_asset._cookedEvent.RemoveListener(CookCompletedCallback);
+		_asset.ReloadDataEvent.RemoveListener(CookCompletedCallback);
+		_asset.CookedDataEvent.RemoveListener(CookCompletedCallback);
 	    }
 	}
 
@@ -180,6 +180,26 @@ namespace HoudiniEngineUnity
 		HEU_TaskManager.CompleteTask(this, bSuccess ? TaskResult.SUCCESS : TaskResult.FAILED);
 	    }
 	}
+	private void CookCompletedCallback(HEU_CookedEventData cookedEventData)
+	{
+	    if (cookedEventData == null)
+	    {
+		return;
+	    }
+
+	    CookCompletedCallback(cookedEventData.Asset, cookedEventData.CookSuccess, cookedEventData.OutputObjects);
+	}
+
+	private void CookCompletedCallback(HEU_ReloadEventData reloadEventData)
+	{
+	    if (reloadEventData == null)
+	    {
+		return;
+	    }
+
+	    CookCompletedCallback(reloadEventData.Asset, reloadEventData.CookSuccess, reloadEventData.OutputObjects);
+	}
+
     }
 
 }   // HoudiniEngineUnity

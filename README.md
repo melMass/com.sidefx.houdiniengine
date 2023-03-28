@@ -1,39 +1,23 @@
-# Houdini Engine for Unity
-Houdini Engine for Unity is a Unity plug-in that allows deep integration of
-Houdini technology into Unity through the use of Houdini Engine.
+> **Warning**
+> Note that this fork of the Houdini Engine for Unity has not been updated for 3 years and was only recently updated for Houdini 19.5.435. Use it at your own risk and make sure to test thoroughly before using it in production.
 
-This plug-in brings Houdini's powerful and flexible procedural workflow into
-Unity through Houdini Digital Assets. Artists can interactively adjust the
-asset's parameters inside Unity, and use Unity geometries as an asset's inputs.
-Houdini's procedural engine will then "cook" the asset and the results will be
-available right inside Unity.
+# Houdini Engine for Unity - Package Version
+This is a fork of the [Houdini Engine for Unity plug-in](https://github.com/sideeffects/HoudiniEngineForUnity) that packages it as a [Package](https://docs.unity3d.com/Manual/Packages.html) compatible with the Package Manager, instead of the traditional Unity package format that would pollute the Assets folder.
 
-The easiest way for artists to access the plug-in is to download the latest
-production build of Houdini and install the Unity plug-in along with the Houdini interactive software.
-Houdini Digital Assets created in Houdini can then be loaded into Unity through the plug-in. 
-A growing library of Digital Assets for use in Unity will be available at the [Orbolt Smart 3D Asset Store](http://www.orbolt.com/unity).
+## Installation
+To install the Houdini Engine for Unity Package, follow these steps:
 
-For more information:
+1. Open Unity.
+2. Open the Package Manager (Window > Package Manager).
+3. Click the "➕" button in the top-left corner of the Package Manager window.
+4. Select "Add package from git URL..." from the dropdown menu.
+5. Enter the following URL: https://github.com/melMass/com.sidefx.houdiniengine.git
+6. Click "Add" and wait for Unity to import the package.
 
-* [Houdini Engine for Unity Product Info](https://www.sidefx.com/products/houdini-engine/unity-plug-in/)
-* [Houdini Enigne for Unity Documentation](https://www.sidefx.com/docs/unity/index.html)
-* [FAQ](https://www.sidefx.com/faq/houdini-engine-faq/)
+## Usage
+Once the package is installed, you can use Houdini Digital Assets in Unity like any other Unity asset. Simply drag and drop the Houdini Digital Asset (.hdalc) file into your Unity scene, adjust its parameters using the Inspector window, and run the game to see the results.
+Checkout the great documentation of the plugin for further details.
 
-For support and reporting bugs:
 
-* [SideFX Houdini Engine for Unity forum](https://www.sidefx.com/forum/50/)
-* [Bug Submission](https://www.sidefx.com/bugs/submit/)
-
-## Supported Unity versions
-Currently, the supported Unity versions are:
-
-* 2018.1 and newer
-
-## Installing from Source
-1. Fork this repository to your own Github account using the Fork button at the top.
-1. Clone the forked repository to your file system.
-1. Download and install the correct build of Houdini. You must have the exact build number and version as HOUDINI_MAJOR, HOUDINI_MINOR, and HOUDINI_BUILD int values in Plugins/HoudiniEngineUnity/Scripts/HEU_HoudiniVersion.cs. You can get the correct build from: http://www.sidefx.com/download/daily-builds (you might need to wait for the build to finish and show up if you're updating to the very latest version of the plugin)
-1. Open a project in Unity. Note that if a previous version of the plugin exists in the project (usually located at Assets/Plugins/HoudiniEngineUnity), then you'll need to remove it from the Unity project. To do so, in Unity, in the Project browser, right-click on HoudiniEngineUnity folder in Assets/Plugins and select Delete.
-1. Copy the Plugins/HoudiniEngineUnity folder from the cloned repository from step 2, and paste it into your Unity project's Assets/Plugins folder. If the Plugins folder exists, you can simply merge with it.
-1. Restart Unity.
-1. Ensure Houdini Engine loaded successfully by going to the "HoudiniEngine" top menu and selecting "Installation Info" and making sure all the versions match.
+## Credits
+The original Houdini Engine for Unity plug-in is created by SideFX Software Inc. This package version by Mel Massadian.

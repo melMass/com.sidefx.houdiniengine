@@ -112,8 +112,6 @@ namespace HoudiniEngineUnity
 
 		_instanceObjects.Add(objCache);
 	    }
-
-	    //Debug.Log("Created instance input cache!");
 	}
 
 	/// <summary>
@@ -132,7 +130,6 @@ namespace HoudiniEngineUnity
 
 	    if (_instanceObjects.Count == 0)
 	    {
-		//Debug.Log("No instance objects");
 		return;
 	    }
 

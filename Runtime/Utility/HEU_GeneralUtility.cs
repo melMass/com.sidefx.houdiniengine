@@ -29,6 +29,7 @@ using System;
 using System.Collections;
 using System.Collections.Generic;
 using System.Runtime.InteropServices;
+using System.Text.RegularExpressions;
 
 #if UNITY_EDITOR
 using UnityEditor;
@@ -42,6 +43,50 @@ namespace HoudiniEngineUnity
     using HAPI_NodeId = System.Int32;
     using HAPI_PartId = System.Int32;
     using HAPI_StringHandle = System.Int32;
+
+    // Struct for copying transform data Unity-side
+    public struct TransformData {
+	public Vector3 position;
+	public Quaternion rotation;
+	
+	public Vector3 localPosition;
+	public Vector3 localScale;
+	public Quaternion localRotation;
+	
+	public Transform parent;
+
+	public TransformData(Transform other)
+	{
+	    this.position = other.position;
+	    this.rotation = other.rotation;
+	    this.localPosition = other.localPosition;
+	    this.localScale = other.localScale;
+	    this.localRotation = other.localRotation;
+	    this.parent = other.parent;
+	}
+
+	public void CopyTo(Transform other, bool copyParent)
+	{
+	    other.position = this.position;
+	    other.rotation = this.rotation;
+	    other.localScale = this.localScale;
+	    if (copyParent)
+	    {
+	        other.parent = this.parent;
+	    }
+	}
+
+	public void CopyToLocal(Transform other, bool copyParent)
+	{
+	    other.localPosition = this.localPosition;
+	    other.localRotation = this.localRotation;
+	    other.localScale = this.localScale;
+	    if (copyParent)
+	    {
+	        other.parent = this.parent;
+	    }
+	}
+    };
 
 
 
@@ -404,7 +449,7 @@ namespace HoudiniEngineUnity
 	    bResult = session.GetAttributeStringData(geoID, partID, name, ref info, data, 0, info.count);
 	    if (!bResult)
 	    {
-		Debug.LogErrorFormat("Failed to get string IDs for attribute {0}", name);
+		HEU_Logger.LogErrorFormat("Failed to get string IDs for attribute {0}", name);
 	    }
 	}
 
@@ -415,6 +460,62 @@ namespace HoudiniEngineUnity
 	    {
 		return HEU_SessionManager.GetStringValuesFromStringIndices(stringHandles);
 	    }
+	    return null;
+	}
+
+	// Gets attribute data as a string
+	// If the attribute is not a string attribute, then it will convert it into a string attribute.
+	public static string[] GetAttributeDataAsString(HEU_SessionBase session, HAPI_NodeId geoID, HAPI_PartId partID, string name, ref HAPI_AttributeInfo attrInfo)
+	{
+	    if (!GetAttributeInfo(session, geoID, partID, name, ref attrInfo))
+	    {
+		return null;
+	    }
+
+	    if (!attrInfo.exists)
+	    {
+		return null;
+	    }
+
+	    if (attrInfo.storage == HAPI_StorageType.HAPI_STORAGETYPE_STRING)
+	    {
+		int[] stringHandles = new int[0];
+		if (GetAttribute(session, geoID, partID, name, ref attrInfo, ref stringHandles, session.GetAttributeStringData))
+		{
+		    return HEU_SessionManager.GetStringValuesFromStringIndices(stringHandles);
+		}
+
+		return null;
+	    }
+	    else if (attrInfo.storage == HAPI_StorageType.HAPI_STORAGETYPE_FLOAT)
+	    {
+		float[] floatData = new float[attrInfo.count * attrInfo.tupleSize];
+		if (session.GetAttributeFloatData(geoID, partID, name, ref attrInfo, floatData, 0, attrInfo.count))
+		{
+		    string[] convertedData = new string[floatData.Length];
+		    for (int i = 0; i < floatData.Length; i++)
+		    {
+			convertedData[i] = floatData[i].ToString();
+		    }
+
+		    return convertedData;
+		}
+	    }
+	    else if (attrInfo.storage == HAPI_StorageType.HAPI_STORAGETYPE_INT)
+	    {
+		int[] intData = new int[attrInfo.count * attrInfo.tupleSize];
+		if (session.GetAttributeIntData(geoID, partID, name, ref attrInfo, intData, 0, attrInfo.count))
+		{
+		    string[] convertedData = new string[intData.Length];
+		    for (int i = 0; i < intData.Length; i++)
+		    {
+			convertedData[i] = intData[i].ToString();
+		    }
+
+		    return convertedData;
+		}
+	    }
+
 	    return null;
 	}
 
@@ -632,7 +733,7 @@ namespace HoudiniEngineUnity
 	    }
 	    else
 	    {
-		Debug.LogWarningFormat("Unsupported storage type {0} for storing attribute!", attrInfo.storage);
+		HEU_Logger.LogWarningFormat("Unsupported storage type {0} for storing attribute!", attrInfo.storage);
 	    }
 
 	    return outputAttr;
@@ -813,7 +914,7 @@ namespace HoudiniEngineUnity
 		}
 	    }
 #else
-			Debug.LogWarning(HEU_Defines.HEU_USERMSG_NONEDITOR_NOT_SUPPORTED);
+			HEU_Logger.LogWarning(HEU_Defines.HEU_USERMSG_NONEDITOR_NOT_SUPPORTED);
 #endif
 	    return null;
 	}
@@ -843,7 +944,7 @@ namespace HoudiniEngineUnity
 		}
 	    }
 #else
-			Debug.LogWarning(HEU_Defines.HEU_USERMSG_NONEDITOR_NOT_SUPPORTED);
+			HEU_Logger.LogWarning(HEU_Defines.HEU_USERMSG_NONEDITOR_NOT_SUPPORTED);
 #endif
 	    return null;
 	}
@@ -954,7 +1055,7 @@ namespace HoudiniEngineUnity
 		UnityEngine.Object.DestroyImmediate(obj, bAllowDestroyingAssets);
 	    }
 #else
-			Debug.LogWarning(HEU_Defines.HEU_USERMSG_NONEDITOR_NOT_SUPPORTED);
+			HEU_Logger.LogWarning(HEU_Defines.HEU_USERMSG_NONEDITOR_NOT_SUPPORTED);
 #endif
 	}
 
@@ -997,6 +1098,48 @@ namespace HoudiniEngineUnity
 		}
 
 		DestroyImmediate(lodGroup);
+	    }
+	}
+
+	public static List<Transform> GetLODTransforms(GameObject targetGO)
+	{
+	    List<Transform> transforms = new List<Transform>();
+	    LODGroup lodGroup = targetGO.GetComponent<LODGroup>();
+	    if (lodGroup != null)
+	    {
+		List<GameObject> childrenGO = GetChildGameObjects(targetGO);
+		if (childrenGO != null)
+		{
+		    for (int i = 0; i < childrenGO.Count; ++i)
+		    {
+			transforms.Add(childrenGO[i].transform);
+		    }
+		}
+
+	    }
+
+	    return transforms;
+	}
+
+	public static void SetLODTransformValues(GameObject targetGO, List<TransformData> transformData)
+	{
+	    if (transformData != null)
+	    {
+		List<Transform> currentTransforms = HEU_GeneralUtility.GetLODTransforms(targetGO);
+		
+		int size = Mathf.Min(transformData.Count, currentTransforms.Count);
+		if (size > 0)
+		{
+		    if (transformData.Count != currentTransforms.Count)
+		    {
+		    	HEU_Logger.LogWarning("Newly baked object doesn't have the same child count as the old object! Transforms values will be applied based on index");
+		    }
+		    
+		    for (int i = 0; i < size; i++)
+		    {
+		    	transformData[i].CopyToLocal(currentTransforms[i], false);
+		    }
+		}
 	    }
 	}
 
@@ -1101,6 +1244,8 @@ namespace HoudiniEngineUnity
 
 		targetColliderMesh = null;
 		meshCollider.sharedMesh = null;
+
+		DestroyImmediate(meshCollider, true);
 	    }
 	}
 
@@ -1229,6 +1374,18 @@ namespace HoudiniEngineUnity
 	    }
 	}
 
+	public static void CopyFlags(GameObject srcGO, GameObject dstGO, bool bIncludeChildren)
+	{
+	    HEU_EditorUtility.SetStatic(dstGO, srcGO.isStatic, bIncludeChildren);
+	    SetTag(dstGO, srcGO.tag, bIncludeChildren);
+	    SetLayer(dstGO, srcGO.layer, bIncludeChildren);
+
+#if UNITY_2019_2_OR_NEWER && UNITY_EDITOR
+	    bool isHidden = SceneVisibilityManager.instance.IsHidden(srcGO);
+	    HEU_EditorUtility.SetIsHidden(dstGO, isHidden, bIncludeChildren);
+#endif
+	}
+
 	public static bool IsMouseWithinSceneView(Camera camera, Vector2 mousePosition)
 	{
 	    return (mousePosition.x < camera.pixelWidth && mousePosition.y < camera.pixelHeight
@@ -1238,7 +1395,14 @@ namespace HoudiniEngineUnity
 	public static bool IsMouseOverRect(Camera camera, Vector2 mousePosition, ref Rect rect)
 	{
 	    mousePosition.y = camera.pixelHeight - mousePosition.y;
-	    return rect.Contains(mousePosition);
+	    float pixelsPerPoint = 1;
+
+#if UNITY_EDITOR
+	    pixelsPerPoint = EditorGUIUtility.pixelsPerPoint;
+#endif
+
+	    Vector2 mouseNew = new Vector2(mousePosition.x / pixelsPerPoint, mousePosition.y / pixelsPerPoint);
+	    return rect.Contains(mouseNew);
 	}
 
 	/// <summary>
@@ -1262,7 +1426,7 @@ namespace HoudiniEngineUnity
 		}
 	    }
 #else
-			Debug.LogWarning(HEU_Defines.HEU_USERMSG_NONEDITOR_NOT_SUPPORTED);
+			HEU_Logger.LogWarning(HEU_Defines.HEU_USERMSG_NONEDITOR_NOT_SUPPORTED);
 #endif
 	    return null;
 	}
@@ -1272,10 +1436,15 @@ namespace HoudiniEngineUnity
 	/// </summary>
 	public static void AssignUnityTag(HEU_SessionBase session, HAPI_NodeId geoID, HAPI_PartId partID, GameObject gameObject)
 	{
+	    if (gameObject == null)
+	    {
+		return;
+	    }
+
 	    HAPI_AttributeInfo tagAttrInfo = new HAPI_AttributeInfo();
 	    int[] tagAttr = new int[0];
 	    HEU_GeneralUtility.GetAttribute(session, geoID, partID, HEU_PluginSettings.UnityTagAttributeName, ref tagAttrInfo, ref tagAttr, session.GetAttributeStringData);
-	    if (tagAttrInfo.exists)
+	    if (tagAttrInfo.exists && tagAttr.Length > 0)
 	    {
 		string tag = HEU_SessionManager.GetString(tagAttr[0]);
 		if (tag.Length > 0)
@@ -1286,8 +1455,8 @@ namespace HoudiniEngineUnity
 		    }
 		    catch (Exception ex)
 		    {
-			Debug.LogWarning("Tag exception: " + ex.ToString());
-			Debug.LogWarningFormat("Unity tag '{0}' does not exist for current project. Add the tag in order to use it!", tag);
+			HEU_Logger.LogWarning("Tag exception: " + ex.ToString());
+			HEU_Logger.LogWarningFormat("Unity tag '{0}' does not exist for current project. Add the tag in order to use it!", tag);
 		    }
 		}
 	    }
@@ -1302,10 +1471,15 @@ namespace HoudiniEngineUnity
 	/// <param name="gameObject"></param>
 	public static void AssignUnityLayer(HEU_SessionBase session, HAPI_NodeId geoID, HAPI_PartId partID, GameObject gameObject)
 	{
+	    if (gameObject == null)
+	    {
+		return;
+	    }
+
 	    HAPI_AttributeInfo layerAttrInfo = new HAPI_AttributeInfo();
 	    int[] layerAttr = new int[0];
 	    HEU_GeneralUtility.GetAttribute(session, geoID, partID, HEU_PluginSettings.UnityLayerAttributeName, ref layerAttrInfo, ref layerAttr, session.GetAttributeStringData);
-	    if (layerAttrInfo.exists)
+	    if (layerAttrInfo.exists && layerAttr.Length > 0)
 	    {
 		string layerStr = HEU_SessionManager.GetString(layerAttr[0]);
 		if (layerStr.Length > 0)
@@ -1313,7 +1487,7 @@ namespace HoudiniEngineUnity
 		    int layer = LayerMask.NameToLayer(layerStr);
 		    if (layer < 0)
 		    {
-			Debug.LogWarningFormat("Unity layer '{0}' does not exist for current project. Add the layer in order to use it!", layerStr);
+			HEU_Logger.LogWarningFormat("Unity layer '{0}' does not exist for current project. Add the layer in order to use it!", layerStr);
 		    }
 		    else
 		    {
@@ -1328,12 +1502,17 @@ namespace HoudiniEngineUnity
 	/// </summary>
 	public static void MakeStaticIfHasAttribute(HEU_SessionBase session, HAPI_NodeId geoID, HAPI_PartId partID, GameObject gameObject)
 	{
+	    if (gameObject == null)
+	    {
+		return;
+	    }
+
 	    HAPI_AttributeInfo staticAttrInfo = new HAPI_AttributeInfo();
 	    int[] staticAttr = new int[0];
 	    HEU_GeneralUtility.GetAttribute(session, geoID, partID, HEU_PluginSettings.UnityStaticAttributeName, ref staticAttrInfo, ref staticAttr, session.GetAttributeIntData);
 	    if (staticAttrInfo.exists && staticAttr.Length > 0)
 	    {
-		HEU_EditorUtility.SetStatic(gameObject, (staticAttr[0] == 1));
+		HEU_EditorUtility.SetStatic(gameObject, (staticAttr[0] == 1), true);
 	    }
 	}
 
@@ -1386,7 +1565,7 @@ namespace HoudiniEngineUnity
 	    {
 		if (attrInfo.owner != attrOwner)
 		{
-		    Debug.LogWarningFormat("Expected {0} attribute owner for attribute {1} but got {2}!", attrOwner, attrName, attrInfo.owner);
+		    HEU_Logger.LogWarningFormat("Expected {0} attribute owner for attribute {1} but got {2}!", attrOwner, attrName, attrInfo.owner);
 		}
 		else if (stringHandle.Length > 0)
 		{
@@ -1421,11 +1600,11 @@ namespace HoudiniEngineUnity
             {
                 if (attrInfo.owner != attrOwner)
                 {
-                    Debug.LogWarningFormat("Expected {0} attribute owner for attribute {1} but got {2}!", attrOwner, attrName, attrInfo.owner);
+                    HEU_Logger.LogWarningFormat("Expected {0} attribute owner for attribute {1} but got {2}!", attrOwner, attrName, attrInfo.owner);
                 }
                 else if (attrInfo.originalOwner != attrOwner)
                 {
-                    Debug.LogWarningFormat("Expected {0} original attribute owner for attribute {1} but got {2}!", attrOwner, attrName, attrInfo.originalOwner);
+                    HEU_Logger.LogWarningFormat("Expected {0} original attribute owner for attribute {1} but got {2}!", attrOwner, attrName, attrInfo.originalOwner);
                 }
                 else if (stringHandle.Length > 0)
                 {
@@ -1577,7 +1756,7 @@ namespace HoudiniEngineUnity
 		System.Type scriptType = HEU_GeneralUtility.GetSystemTypeByName(scriptTypeName);
 		if (scriptType == null)
 		{
-		    Debug.LogFormat("Script with name {0} not found! Unable to attach script from attribute: {1}. Expected format: {2}", scriptTypeName, scriptToAttach, expectedFormat);
+		    HEU_Logger.LogFormat("Script with name {0} not found! Unable to attach script from attribute: {1}. Expected format: {2}", scriptTypeName, scriptToAttach, expectedFormat);
 		    return;
 		}
 
@@ -1587,18 +1766,18 @@ namespace HoudiniEngineUnity
 		    component = gameObject.GetComponent(scriptType);
 		    if (component == null)
 		    {
-			Debug.LogFormat("Attaching script {0} to gameobject", scriptType);
+			HEU_Logger.LogFormat("Attaching script {0} to gameobject", scriptType);
 			component = gameObject.AddComponent(scriptType);
 			if (component == null)
 			{
-			    Debug.LogFormat("Unable to attach script component with type '{0}' from script attribute: {1}", scriptType.ToString(), scriptToAttach);
+			    HEU_Logger.LogFormat("Unable to attach script component with type '{0}' from script attribute: {1}", scriptType.ToString(), scriptToAttach);
 			    return;
 			}
 		    }
 		}
 		catch (System.ArgumentException ex)
 		{
-		    Debug.LogWarningFormat("Specified unity_script '{0}' does not derive from MonoBehaviour. Unable to attach script.\n{1}", scriptTypeName, ex.ToString());
+		    HEU_Logger.LogWarningFormat("Specified unity_script '{0}' does not derive from MonoBehaviour. Unable to attach script.\n{1}", scriptTypeName, ex.ToString());
 		    return;
 		}
 
@@ -1619,13 +1798,13 @@ namespace HoudiniEngineUnity
 		    {
 			// Get argument
 			string scriptArgument = scriptToAttach.Substring(functionColon + 1).Trim();
-			//Debug.LogFormat("Invoking script function {0} with argument {1}", scriptFunction, scriptArgument);
+			//HEU_Logger.LogFormat("Invoking script function {0} with argument {1}", scriptFunction, scriptArgument);
 			component.SendMessage(scriptFunction, scriptArgument, SendMessageOptions.DontRequireReceiver);
 		    }
 		    else
 		    {
 			// No argument
-			//Debug.LogFormat("Invoking script function {0}", scriptFunction);
+			//HEU_Logger.LogFormat("Invoking script function {0}", scriptFunction);
 			component.SendMessage(scriptFunction, SendMessageOptions.DontRequireReceiver);
 		    }
 		}
@@ -1638,7 +1817,7 @@ namespace HoudiniEngineUnity
 	    return (viewportPos.z > 0) && (new Rect(0, 0, 1, 1).Contains(viewportPos));
 	}
 
-	public static List<HEU_Handle> FindOrGenerateHandles(HEU_SessionBase session, ref HAPI_AssetInfo assetInfo, HAPI_NodeId assetID, string assetName, HEU_Parameters parameters, List<HEU_Handle> currentHandles)
+	internal static List<HEU_Handle> FindOrGenerateHandles(HEU_SessionBase session, ref HAPI_AssetInfo assetInfo, HAPI_NodeId assetID, string assetName, HEU_Parameters parameters, List<HEU_Handle> currentHandles)
 	{
 	    List<HEU_Handle> newHandles = new List<HEU_Handle>();
 
@@ -1668,7 +1847,7 @@ namespace HoudiniEngineUnity
 		else
 		{
 		    // Commented out warning as it gets annoying, especially with "Curve" handles
-		    //Debug.LogWarningFormat("Asset {0} has unsupported Handle type {0} for handle {1}", assetName, handleName, handleTypeString);
+		    //HEU_Logger.LogWarningFormat("Asset {0} has unsupported Handle type {0} for handle {1}", assetName, handleName, handleTypeString);
 		    continue;
 		}
 
@@ -1691,7 +1870,7 @@ namespace HoudiniEngineUnity
 		if (bSuccess)
 		{
 		    newHandles.Add(newHandle);
-		    //Debug.LogFormat("Found handle {0} of type {1}", handleName, handleTypeString);
+		    //HEU_Logger.LogFormat("Found handle {0} of type {1}", handleName, handleTypeString);
 		}
 	    }
 
@@ -1754,7 +1933,7 @@ namespace HoudiniEngineUnity
 		}
 		catch (Exception ex)
 		{
-		    Debug.LogErrorFormat("Loading image at {0} triggered exception: {1}", filePath, ex);
+		    HEU_Logger.LogErrorFormat("Loading image at {0} triggered exception: {1}", filePath, ex);
 		}
 	    }
 	    return newTexture;
@@ -1840,7 +2019,7 @@ namespace HoudiniEngineUnity
 		if (string.IsNullOrEmpty(materialName))
 		{
 		    // Warn user of empty string, but add it anyway to our map so we don't keep trying to parse it
-		    //Debug.LogWarningFormat("Found empty material attribute value for terrain heightfield part.");
+		    //HEU_Logger.LogWarningFormat("Found empty material attribute value for terrain heightfield part.");
 		}
 	    }
 
@@ -1900,62 +2079,178 @@ namespace HoudiniEngineUnity
 		meshCollider.sharedMesh = srcMeshCollider.sharedMesh;
 	    }
 	}
-    }
 
-
-    public static class ArrayExtensions
-    {
-	/// <summary>
-	/// Set the given array with the given value for every element.
-	/// </summary>
-	/// <typeparam name="T"></typeparam>
-	/// <param name="array"></param>
-	/// <param name="defaultValue"></param>
-	public static void Init<T>(this T[] array, T defaultValue)
+	public static float BiLerpf(float p00, float p10, float p01, float p11, float fracX, float fracY)
 	{
-	    if (array != null)
+	    return Mathf.Lerp(
+		    Mathf.Lerp(p00, p10, fracX),
+		    Mathf.Lerp(p01, p11, fracX),
+		    fracY
+	    );
+	}
+
+	public static float Fractionalf(float value)
+	{
+	    return value - Mathf.Floor(value);
+	}
+
+	public static string LongestCommonPrefix(List<string> list)
+	{
+	    if (list == null || list.Count == 0)
 	    {
-		for (int i = 0; i < array.Length; i++)
+		return "";
+	    }
+	    else if (list.Count == 1)
+	    {
+		return list[0];
+	    }
+
+	    list.Sort();
+
+	    string firstStr = list[0];
+	    string lastStr = list[list.Count - 1];
+
+	    string resultStr = "";
+
+	    for (int i = 0; i < firstStr.Length; i++)
+	    {
+		if (firstStr[i] == lastStr[i])
 		{
-		    array[i] = defaultValue;
+		    resultStr += firstStr[i];
+		}
+		else
+		{
+		    break;
+		}
+	    }
+
+	    return resultStr;
+	}
+
+
+	public static string GetRawOperatorName(string assetOpName)
+	{
+	    string result = assetOpName;
+	    result = result.Replace(':', '_');
+	    int lastSlash = result.LastIndexOf('/');
+	    if (lastSlash != -1)
+	    {
+		result = result.Substring(lastSlash+1);
+	    }
+
+	    return result;
+	}
+
+	public static GameObject GetPrefabFromPath(string path)
+	{
+	    GameObject result = null;
+	    if (path.Contains("Resources/"))
+	    {
+		// Remove up to Resources/
+		string resPath = path;
+		int resIndex = resPath.IndexOf("Resources/");
+		if (resIndex > 0)
+		{
+		    resPath = resPath.Substring(resIndex);
+		}
+
+		if (resPath.StartsWith("Resources/"))
+		{
+		    resPath = resPath.Replace("Resources/", "");
+
+		    // Remove file extension
+		    int extIndex = resPath.LastIndexOf(".");
+		    if (extIndex > 0)
+		    {
+		        resPath = resPath.Substring(0, extIndex);
+		    }
+
+		    //HEU_Logger.Log("Resource path: " + resPath);
+		    result = Resources.Load<GameObject>(resPath) as GameObject;
+		}
+	    }
+	    else if (!path.StartsWith("Assets"))
+	    {
+	        // Attempt to load from resources if it doesn't have Assets/ in path
+	        result = Resources.Load<GameObject>(path) as GameObject;
+	    }
+
+	    if (result == null)
+	    {
+	        HEU_AssetDatabase.ImportAsset(path, HEU_AssetDatabase.HEU_ImportAssetOptions.Default);
+	        result = HEU_AssetDatabase.LoadAssetAtPath(path, typeof(GameObject)) as GameObject;
+	    }
+
+	    return result;
+	}
+
+	// Composes n children by appending the parent's name with a number
+	public static void ComposeNChildren(GameObject parent, int n, ref List<GameObject> childGameObjects, bool destroyIfExists = false)
+	{
+	    for (int i = 0; i < n; i++)
+	    {
+		string name = parent.name + "_" + i;
+		if (destroyIfExists)
+		    DestroyChildWithName(parent.transform, name);
+		
+		GameObject newObj = HEU_GeneralUtility.CreateNewGameObject(name);
+		newObj.transform.SetParent(parent.transform);
+		childGameObjects.Add(newObj);
+	    }
+	}
+
+	private static void DestroyChildWithName(Transform parent, string name)
+	{
+	    for (int i = parent.childCount - 1; i >= 0; i--)
+	    {
+		Transform child = parent.GetChild(i);
+		string childName = child.name;
+		if (childName == name)
+		{
+		    GameObject.DestroyImmediate(child.gameObject);
 		}
 	    }
 	}
 
-	/// <summary>
-	/// Set the given list with the given value for every element.
-	/// </summary>
-	/// <typeparam name="T"></typeparam>
-	/// <param name="array"></param>
-	/// <param name="defaultValue"></param>
-	public static void Init<T>(this List<T> array, T defaultValue)
+	public static void DestroyAutoGeneratedChildren(GameObject parent)
 	{
-	    if (array != null)
+	    for (int i = parent.transform.childCount - 1; i >= 0; i--)
 	    {
-		for (int i = 0; i < array.Count; i++)
+		Transform child = parent.transform.GetChild(i);
+		string childName = child.name;
+
+		string pattern = string.Format(@"{0}_[0-9]+",
+			parent.name);
+
+		Regex reg = new Regex(pattern);
+		Match match = reg.Match(childName);
+
+		if (match.Success)
 		{
-		    array[i] = defaultValue;
+		    GameObject.DestroyImmediate(child.gameObject);
 		}
 	    }
 	}
 
-	public static void CopyToWithResize<T>(this T[] srcArray, ref T[] destArray)
-	{
-	    if (srcArray == null)
-	    {
-		destArray = null;
-	    }
-	    else
-	    {
-		if (destArray == null || destArray.Length != srcArray.Length)
-		{
-		    destArray = new T[srcArray.Length];
-		}
 
-		Array.Copy(srcArray, destArray, srcArray.Length);
+	// Helper to create a new gameObject. Helps with debugging.
+	public static GameObject CreateNewGameObject(string name = "")
+	{	
+	    if (name == "") return new GameObject();
+	    return new GameObject(name);
+	}
+
+	// Helper to rename a new gameObject. Helps with debugging.
+	public static void RenameGameObject(GameObject obj, string name)
+	{
+	    if (obj != null)
+	    {
+		obj.name = name;
 	    }
 	}
-    }
+
+    };
+
 
     public class ReverseCompare : IComparer
     {
@@ -1965,4 +2260,5 @@ namespace HoudiniEngineUnity
 	}
     }
 
+ 
 }   // HoudiniEngineUnity

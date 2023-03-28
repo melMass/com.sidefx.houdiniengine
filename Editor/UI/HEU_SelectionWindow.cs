@@ -27,12 +27,13 @@
 using System.Collections.Generic;
 using UnityEngine;
 using UnityEditor;
+using UnityEngine.Tilemaps;
 
 namespace HoudiniEngineUnity
 {
     class HEU_SelectionWindow : EditorWindow
     {
-	public static void ShowWindow(SelectionResultHandler selectionHandler, System.Type selectionType)
+	public static void ShowWindow(SelectionResultHandler selectionHandler, System.Type selectionType, HEU_InputNode inputNode = null)
 	{
 	    bool bUtility = false;
 	    bool bFocus = true;
@@ -40,6 +41,7 @@ namespace HoudiniEngineUnity
 
 	    HEU_SelectionWindow window = EditorWindow.GetWindow<HEU_SelectionWindow>(bUtility, title, bFocus);
 	    window.autoRepaintOnSceneChange = true;
+	    window._inputNode = inputNode;
 	    window._selectionHandler = selectionHandler;
 	    window._selectionType = selectionType;
 	}
@@ -189,7 +191,7 @@ namespace HoudiniEngineUnity
 
 			if (selectedGOs.Count > 0)
 			{
-			    _selectionHandler(selectedGOs.ToArray());
+			    _selectionHandler(selectedGOs.ToArray(), _inputNode);
 			}
 		    }
 
@@ -214,9 +216,24 @@ namespace HoudiniEngineUnity
 		HEU_HoudiniAssetRoot heuRoot = obj as HEU_HoudiniAssetRoot;
 		return heuRoot.gameObject;
 	    }
+	    else if (type == typeof(Terrain))
+	    {
+		Terrain terrain = obj as Terrain;
+		return terrain.gameObject;
+	    }
+	    else if (type == typeof(HEU_BoundingVolume))
+	    {
+		HEU_BoundingVolume volume = obj as HEU_BoundingVolume;
+		return volume.gameObject;
+	    }
+	    else if (type == typeof(Tilemap))
+	    {
+		Tilemap tilemap = obj as Tilemap;
+		return tilemap.gameObject;
+	    }
 	    else
 	    {
-		Debug.LogErrorFormat("Unsupported type {0} for Selection Window.", type);
+		HEU_Logger.LogErrorFormat("Unsupported type {0} for Selection Window.", type);
 		return null;
 	    }
 	}
@@ -377,9 +394,11 @@ namespace HoudiniEngineUnity
 
 	private Vector2 _scrollViewPos = Vector2.zero;
 
-	public delegate void SelectionResultHandler(GameObject[] selectedObjects);
+	public delegate void SelectionResultHandler(GameObject[] selectedObjects, HEU_InputNode inputNode);
 
 	private SelectionResultHandler _selectionHandler;
+
+	private HEU_InputNode _inputNode;
 
 	private System.Type _selectionType = typeof(GameObject);
 

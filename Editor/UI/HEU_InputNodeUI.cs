@@ -27,6 +27,7 @@
 using UnityEngine;
 using UnityEditor;
 using System.Collections.Generic;
+using UnityEngine.Tilemaps;
 
 namespace HoudiniEngineUnity
 {
@@ -35,6 +36,14 @@ namespace HoudiniEngineUnity
     /// </summary>
     public static class HEU_InputNodeUI
     {
+
+	private static GUIContent _meshExportCollidersContent = new GUIContent("Export colliders", "If checked, will export colliders on the object.");
+
+	private static GUIContent _tilemapCreateGroupsContent = new GUIContent("Create Groups for Tiles", "If checked, will create a point group for each kind of tile using its tile name. If unchecked, will create a point string attribute instead.");
+	private static GUIContent _tilemapExportUnusedTilesContent = new GUIContent("Keep Unused Tiles", "If checked, will create a point for an empty tile");
+	private static GUIContent _tilemapColorContent = new GUIContent("Apply Tile color", "If checked, will output a Cd color attribute to point.");
+	private static GUIContent _tilemapOrientationContent = new GUIContent("Apply Tilemap Orientation", "If checked, will offset position by the tilemap position offset, and produce orient/pscale attributes to the points.");
+
 	/// <summary>
 	/// Populate the UI cache for the given input node
 	/// </summary>
@@ -53,6 +62,9 @@ namespace HoudiniEngineUnity
 
 		inputNode._uiCache._inputObjectsProperty = HEU_EditorUtility.GetSerializedProperty(inputNode._uiCache._inputNodeSerializedObject, "_inputObjects");
 
+		inputNode._uiCache._meshSettingsProperty = HEU_EditorUtility.GetSerializedProperty(inputNode._uiCache._inputNodeSerializedObject, "_meshSettings");
+		inputNode._uiCache._tilemapSettingsProperty = HEU_EditorUtility.GetSerializedProperty(inputNode._uiCache._inputNodeSerializedObject, "_tilemapSettings");
+
 		int inputCount = inputNode._uiCache._inputObjectsProperty.arraySize;
 		for (int i = 0; i < inputCount; ++i)
 		{
@@ -67,6 +79,7 @@ namespace HoudiniEngineUnity
 		    objectCache._translateProperty = inputObjectProperty.FindPropertyRelative("_translateOffset");
 		    objectCache._rotateProperty = inputObjectProperty.FindPropertyRelative("_rotateOffset");
 		    objectCache._scaleProperty = inputObjectProperty.FindPropertyRelative("_scaleOffset");
+
 
 		    inputNode._uiCache._inputObjectCache.Add(objectCache);
 		}
@@ -95,10 +108,12 @@ namespace HoudiniEngineUnity
 	{
 	    int plusButtonWidth = 20;
 
-	    //GUIStyle boldLabelStyle = new GUIStyle(EditorStyles.boldLabel);
-	    //boldLabelStyle.alignment = TextAnchor.UpperLeft;
+	    const string inputTypeTooltip = @"Input type of the object. 
 
-	    GUIContent inputTypeLabel = new GUIContent("Input Type");
+The HDA type can accept any object with a HEU_HoudiniAssetRoot component. (Including curves)
+
+The UNITY_MESH type can accept any GameObject (Including Terrain, HEU_BoundingVolumes).";
+	    GUIContent inputTypeLabel = new GUIContent("Input Type", inputTypeTooltip);
 
 	    GUIContent translateLabel = new GUIContent("    Translate");
 	    GUIContent rotateLabel = new GUIContent("    Rotate");
@@ -133,7 +148,7 @@ namespace HoudiniEngineUnity
 		EditorGUILayout.PropertyField(inputNode._uiCache._keepWorldTransformProperty);
 		EditorGUILayout.PropertyField(inputNode._uiCache._packBeforeMergeProperty);
 
-		if (inputObjectType == HEU_InputNode.InputObjectType.HDA)
+		if (HEU_InputNode.GetInternalObjectType(inputObjectType) == HEU_InputNode.InternalObjectType.HDA)
 		{
 		    SerializedProperty inputAssetsProperty = inputNode._uiCache._inputAssetsProperty;
 		    if (inputAssetsProperty != null)
@@ -153,17 +168,14 @@ namespace HoudiniEngineUnity
 				bSkipElements = true;
 			    }
 
-			    if (GUILayout.Button("Add Selection"))
-			    {
-				HEU_SelectionWindow.ShowWindow(inputNode.HandleSelectedObjectsForInputHDAs, typeof(HEU_HoudiniAssetRoot));
-			    }
-
 			    if (GUILayout.Button("Clear"))
 			    {
 				inputAssetsProperty.ClearArray();
 				bSkipElements = true;
 			    }
 			}
+
+			DrawSelectionWindow(HEU_InputNode.InputObjectType.HDA, inputNode);
 
 			if (!bSkipElements)
 			{
@@ -215,11 +227,7 @@ namespace HoudiniEngineUnity
 		    }
 
 		}
-		//else if (inputObjectType == HEU_InputNode.InputObjectType.CURVE)
-		//{
-		//	TODO INPUT CURVE
-		//}
-		else if (inputObjectType == HEU_InputNode.InputObjectType.UNITY_MESH)
+		else if (HEU_InputNode.GetInternalObjectType(inputObjectType) == HEU_InputNode.InternalObjectType.UNITY_MESH)
 		{
 		    SerializedProperty inputObjectsProperty = inputNode._uiCache._inputObjectsProperty;
 		    if (inputObjectsProperty != null)
@@ -239,16 +247,42 @@ namespace HoudiniEngineUnity
 				bSkipElements = true;
 			    }
 
-			    if (GUILayout.Button("Add Selection"))
-			    {
-				HEU_SelectionWindow.ShowWindow(inputNode.HandleSelectedObjectsForInputObjects, typeof(GameObject));
-			    }
-
 			    if (GUILayout.Button("Clear"))
 			    {
 				inputObjectsProperty.ClearArray();
 				bSkipElements = true;
 			    }
+			}
+
+			DrawSelectionWindow(inputObjectType, inputNode);
+
+			if (inputObjectType == HEU_InputNode.InputObjectType.UNITY_MESH && inputNode.MeshSettings != null)
+			{
+			    HEU_EditorUI.DrawHeadingLabel("Mesh settings");
+			    EditorGUI.indentLevel++;
+			    {
+				UnityEditor.SerializedProperty exportCollidersProperty = inputNode._uiCache._meshSettingsProperty.FindPropertyRelative("_exportColliders");
+	
+				exportCollidersProperty.boolValue = HEU_EditorUI.DrawToggleLeft(exportCollidersProperty.boolValue, _meshExportCollidersContent.text, _meshExportCollidersContent.tooltip);
+			    }
+			    EditorGUI.indentLevel--;
+			}
+			else if (inputObjectType == HEU_InputNode.InputObjectType.TILEMAP && inputNode.TilemapSettings != null)
+			{
+			    HEU_EditorUI.DrawHeadingLabel("Tilemap settings");
+			    EditorGUI.indentLevel++;
+			    {
+				UnityEditor.SerializedProperty createGroupsForTilesProperty = inputNode._uiCache._tilemapSettingsProperty.FindPropertyRelative("_createGroupsForTiles");
+				UnityEditor.SerializedProperty exportUnusedTilesProperty = inputNode._uiCache._tilemapSettingsProperty.FindPropertyRelative("_exportUnusedTiles");
+				UnityEditor.SerializedProperty applyTileColorProperty = inputNode._uiCache._tilemapSettingsProperty.FindPropertyRelative("_applyTileColor");
+				UnityEditor.SerializedProperty applyTilemapOrientationProperty = inputNode._uiCache._tilemapSettingsProperty.FindPropertyRelative("_applyTilemapOrientation");
+
+				createGroupsForTilesProperty.boolValue = HEU_EditorUI.DrawToggleLeft(createGroupsForTilesProperty.boolValue, _tilemapCreateGroupsContent.text, _tilemapCreateGroupsContent.tooltip);
+				exportUnusedTilesProperty.boolValue = HEU_EditorUI.DrawToggleLeft(exportUnusedTilesProperty.boolValue, _tilemapExportUnusedTilesContent.text, _tilemapExportUnusedTilesContent.tooltip);
+				applyTileColorProperty.boolValue = HEU_EditorUI.DrawToggleLeft(applyTileColorProperty.boolValue, _tilemapColorContent.text, _tilemapColorContent.tooltip);
+				applyTilemapOrientationProperty.boolValue = HEU_EditorUI.DrawToggleLeft(applyTilemapOrientationProperty.boolValue, _tilemapOrientationContent.text, _tilemapOrientationContent.tooltip);
+			    }
+			    EditorGUI.indentLevel--;
 			}
 
 			if (!bSkipElements)
@@ -262,7 +296,6 @@ namespace HoudiniEngineUnity
 				    {
 					EditorGUILayout.LabelField("Input " + (i + 1));
 
-					//using (var vs3 = new EditorGUILayout.VerticalScope())
 					{
 					    if (GUILayout.Button("+", GUILayout.Width(plusButtonWidth)))
 					    {
@@ -282,11 +315,58 @@ namespace HoudiniEngineUnity
 				    EditorGUI.indentLevel++;
 				    using (var vs4 = new EditorGUILayout.VerticalScope())
 				    {
-					if (i < inputNode._uiCache._inputObjectCache.Count)
+					if (i < inputNode._uiCache._inputObjectCache.Count && i < inputNode.InputObjects.Count)
 					{
 					    HEU_InputNodeUICache.HEU_InputObjectUICache objectCache = inputNode._uiCache._inputObjectCache[i];
+					    GameObject oldObject = inputNode.InputObjects[i]._gameObject;
 
-					    EditorGUILayout.PropertyField(objectCache._gameObjectProperty, GUIContent.none);
+					    GameObject newObject = null;
+					    
+
+					    switch (inputObjectType)
+					    {
+						case HEU_InputNode.InputObjectType.TERRAIN:
+						    inputNode.InputObjects[i]._terrainReference = EditorGUILayout.ObjectField(inputNode.InputObjects[i]._terrainReference,  typeof(Terrain), true) as Terrain;
+
+						    if (inputNode.InputObjects[i]._terrainReference != null)
+						    {
+							newObject = inputNode.InputObjects[i]._terrainReference.gameObject;
+						    }
+						    
+						    break;
+						case HEU_InputNode.InputObjectType.BOUNDING_BOX:
+						    inputNode.InputObjects[i]._boundingVolumeReference = EditorGUILayout.ObjectField(inputNode.InputObjects[i]._boundingVolumeReference,  typeof(HEU_BoundingVolume), true) as HEU_BoundingVolume;
+
+						    if (inputNode.InputObjects[i]._boundingVolumeReference != null)
+						    {
+							newObject = inputNode.InputObjects[i]._boundingVolumeReference.gameObject;
+						    }
+						    
+						    break;
+						case HEU_InputNode.InputObjectType.TILEMAP:
+						    inputNode.InputObjects[i]._tilemapReference = EditorGUILayout.ObjectField(inputNode.InputObjects[i]._tilemapReference,  typeof(Tilemap), true) as Tilemap;
+
+						    if (inputNode.InputObjects[i]._tilemapReference != null)
+						    {
+							newObject = inputNode.InputObjects[i]._tilemapReference.gameObject;
+						    }
+
+						    break;
+
+						default:
+						    newObject = EditorGUILayout.ObjectField(inputNode.InputObjects[i]._gameObject,  typeof(GameObject), true) as GameObject;
+						    break;
+					    }
+
+
+					    if (oldObject != newObject)
+					    {
+						Undo.RecordObject(inputNode, "GameObject Assign");
+						inputNode.InputObjects[i]._gameObject = newObject;
+						// Set the reference to avoid strange bugs when switching input type modes
+						inputNode.InputObjects[i].SetReferencesFromGameObject();
+						EditorUtility.SetDirty(inputNode);
+					    }
 
 					    using (new EditorGUI.DisabledScope(!inputNode._uiCache._keepWorldTransformProperty.boolValue))
 					    {
@@ -334,6 +414,159 @@ namespace HoudiniEngineUnity
 		}
 	    }
 	}
+
+	public static void HandleSelectedObjectsForInputHDAs(GameObject[] selectedObjects, HEU_InputNode inputNode)
+	{
+	    inputNode.HandleSelectedObjectsForInputHDAs(selectedObjects);
+
+	    inputNode._uiCache._inputNodeSerializedObject.ApplyModifiedProperties();
+	    inputNode.RequiresUpload = true;
+
+	    inputNode.ClearUICache();
+	}
+
+	public static void HandleSelectedObjectsForInputObjects(GameObject[] selectedObjects, HEU_InputNode inputNode)
+	{
+	    inputNode.HandleSelectedObjectsForInputObjects(selectedObjects);
+	    inputNode._uiCache._inputNodeSerializedObject.ApplyModifiedProperties();
+	    inputNode.RequiresUpload = true;
+
+	    inputNode.ClearUICache();
+	}
+
+	private static void DrawSelectionWindow(HEU_InputNode.InputObjectType inputObjectType, HEU_InputNode inputNode)
+	{
+	    using (var hs1 = new EditorGUILayout.HorizontalScope())
+	    {
+		if (GUILayout.Button(new GUIContent("Selection Window", "Use a custom window to select the objects from the Hierarchy.")))
+		{
+		    if (HEU_InputNode.GetInternalObjectType(inputObjectType) == HEU_InputNode.InternalObjectType.HDA)
+		    {
+			HEU_SelectionWindow.ShowWindow(HandleSelectedObjectsForInputHDAs, typeof(HEU_HoudiniAssetRoot), inputNode);
+		    }
+		    else if (inputObjectType == HEU_InputNode.InputObjectType.TERRAIN)
+		    {
+		        HEU_SelectionWindow.ShowWindow(HandleSelectedObjectsForInputObjects, typeof(Terrain), inputNode);
+		    }
+		    else if (inputObjectType == HEU_InputNode.InputObjectType.BOUNDING_BOX)
+		    {
+		        HEU_SelectionWindow.ShowWindow(HandleSelectedObjectsForInputObjects, typeof(HEU_BoundingVolume), inputNode);
+		    }
+		    else if (inputObjectType == HEU_InputNode.InputObjectType.TILEMAP)
+		    {
+		        HEU_SelectionWindow.ShowWindow(HandleSelectedObjectsForInputObjects, typeof(Tilemap), inputNode);
+		    }
+		    else
+		    {
+		        HEU_SelectionWindow.ShowWindow(HandleSelectedObjectsForInputObjects, typeof(GameObject), inputNode);
+		    }
+		}
+
+		if (!inputNode._usingSelectFromHierarchy)
+		{
+		    string title = "Select from Hierarchy (Locks Inspector)";
+		    float shortenLength = 420;
+		    float reallyShortLength = 320;
+
+		    float screenWidth = Screen.width;
+		    if (screenWidth < reallyShortLength)
+		    {
+			title = "From Hierarchy";
+		    }
+		    else if (screenWidth < shortenLength)
+		    {
+			title = "Select from Hierarchy";
+		    }
+		
+		    if (GUILayout.Button(new GUIContent(title, "Locks the inspector and so you can select GameObjects from the Hierarchy. Once select, press Use Current Selection to add the specified objects as inputs.")))
+		    {
+		        SetInspectorLock(true);
+			inputNode._usingSelectFromHierarchy = true;
+		    }
+		}
+		else
+		{
+		    if (GUILayout.Button("Use Current Selection"))
+		    {
+		        SetInspectorLock(false);
+			inputNode._usingSelectFromHierarchy = false;
+
+			GameObject[] selection = Selection.gameObjects;
+			List<GameObject> filteredObjects = new List<GameObject>(selection);
+
+
+			filteredObjects = filteredObjects.Filter((GameObject obj) => {
+			    if (obj == null)
+			    {
+				return false;
+			    }
+
+			    bool result = true;
+
+			    if (HEU_InputNode.GetInternalObjectType(inputObjectType) == HEU_InputNode.InternalObjectType.HDA 
+			        && obj.GetComponent<HEU_HoudiniAssetRoot>() == null)
+			    {
+			    	result = false;
+			    }
+			    else if (inputObjectType == HEU_InputNode.InputObjectType.TERRAIN
+			        && obj.GetComponent<Terrain>() == null)
+			    {
+				result = false;
+			    }
+			    else if (inputObjectType == HEU_InputNode.InputObjectType.BOUNDING_BOX
+			        && obj.GetComponent<HEU_BoundingVolume>() == null)
+			    {
+			        result = false;
+			    }
+			    else if (inputObjectType == HEU_InputNode.InputObjectType.TILEMAP
+			        && obj.GetComponent<Tilemap>() == null)
+			    {
+				result = false;
+			    }
+
+			    if (result == false)
+			    {
+				HEU_Logger.LogWarning("Houdini GameObject selection: " + obj.name + " filtered out due to invalid type!");
+				return false;
+			    }
+
+			    return true;
+			});
+
+			if (HEU_InputNode.GetInternalObjectType(inputObjectType) == HEU_InputNode.InternalObjectType.HDA)
+			{
+			    HandleSelectedObjectsForInputHDAs(filteredObjects.ToArray(), inputNode);
+			}
+			else
+			{
+			    HandleSelectedObjectsForInputObjects(filteredObjects.ToArray(), inputNode);
+			}
+
+			// Populate input cache if modified.
+			if (inputNode._uiCache == null)
+			{
+			    PopulateCache(inputNode);
+			}
+
+			if (inputNode.ParentAsset && inputNode.ParentAsset.RootGameObject)
+			{
+			    // Select this gameObject so it doesn't jump to the last selection as soon as it unlocks.
+			    Selection.activeGameObject = inputNode.ParentAsset.RootGameObject.gameObject;
+			}
+
+		    }
+		}
+
+		
+	    }
+	}
+
+	private static void SetInspectorLock(bool set)
+	{
+	    ActiveEditorTracker.sharedTracker.isLocked = set;
+	    ActiveEditorTracker.sharedTracker.ForceRebuild();
+	}
+
     }
 
 }       // HoudiniEngineUnity

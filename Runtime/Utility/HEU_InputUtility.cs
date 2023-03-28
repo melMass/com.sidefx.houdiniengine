@@ -81,7 +81,7 @@ namespace HoudiniEngineUnity
 			if (_inputInterfaces[i] != null && _inputInterfaces[i].Priority <= inputInterface.Priority)
 			{
 			    _inputInterfaces.Add(inputInterface);
-			    //Debug.LogFormat("Registered {0} at {1}. Total of {2}", inputInterface.GetType(), i, _inputInterfaces.Count);
+			    //HEU_Logger.LogFormat("Registered {0} at {1}. Total of {2}", inputInterface.GetType(), i, _inputInterfaces.Count);
 			    break;
 			}
 		    }
@@ -89,7 +89,7 @@ namespace HoudiniEngineUnity
 		else
 		{
 		    _inputInterfaces.Add(inputInterface);
-		    //Debug.LogFormat("Registered {0} at {1}. Total of {2}", inputInterface.GetType(), _inputInterfaces.Count - 1, _inputInterfaces.Count);
+		    //HEU_Logger.LogFormat("Registered {0} at {1}. Total of {2}", inputInterface.GetType(), _inputInterfaces.Count - 1, _inputInterfaces.Count);
 		}
 	    }
 	}
@@ -151,7 +151,7 @@ namespace HoudiniEngineUnity
 	/// </summary>
 	/// <param name="inputObjectInfo">Input object info used to find the interface</param>
 	/// <returns>Compatible input interface or null</returns>
-	public static HEU_InputInterface GetInputInterface(HEU_InputObjectInfo inputObjectInfo)
+	internal static HEU_InputInterface GetInputInterface(HEU_InputObjectInfo inputObjectInfo)
 	{
 	    HEU_InputInterface inputInterface = null;
 	    if (inputObjectInfo._inputInterfaceType == null)
@@ -181,15 +181,16 @@ namespace HoudiniEngineUnity
 	/// <param name="connectMergeID">Created SOP/merge node ID</param>
 	/// <param name="inputObjects">List of input objects to upload</param>
 	/// <param name="inputObjectsConnectedAssetIDs">List of input node IDs for the input nodes created</param>
-	/// <param name="bKeepWorldTransform">Whether to use world transform for the input nodes</param>
+	/// <param name="inputNode">The specified inputNode to create the node for (used for settings)</param>
 	/// <returns>True if successfully uploading input nodes</returns>
-	public static bool CreateInputNodeWithMultiObjects(HEU_SessionBase session, HAPI_NodeId assetID,
-		ref HAPI_NodeId connectMergeID, ref List<HEU_InputObjectInfo> inputObjects, ref List<HAPI_NodeId> inputObjectsConnectedAssetIDs, bool bKeepWorldTransform)
+	internal static bool CreateInputNodeWithMultiObjects(HEU_SessionBase session, HAPI_NodeId assetID,
+		ref HAPI_NodeId connectMergeID, ref List<HEU_InputObjectInfo> inputObjects, ref List<HAPI_NodeId> inputObjectsConnectedAssetIDs, HEU_InputNode inputNode)
 	{
+	    bool bKeepWorldTransform = inputNode.KeepWorldTransform;
 	    // Create the merge SOP node that the input nodes are going to connect to.
 	    if (!session.CreateNode(-1, "SOP/merge", null, true, out connectMergeID))
 	    {
-		Debug.LogErrorFormat("Unable to create merge SOP node for connecting input assets.");
+		HEU_Logger.LogErrorFormat("Unable to create merge SOP node for connecting input assets.");
 		return false;
 	    }
 
@@ -209,14 +210,27 @@ namespace HoudiniEngineUnity
 		HEU_InputInterface inputInterface = GetInputInterface(inputObjects[i]);
 		if (inputInterface == null)
 		{
-		    Debug.LogWarningFormat("No input interface found for gameobject: {0}. Skipping upload!", inputObjects[i]._gameObject.name);
+		    HEU_Logger.LogWarningFormat("No input interface found for gameobject: {0}. Skipping upload!", inputObjects[i]._gameObject.name);
 		    continue;
+		}
+
+		// Apply settings based on the interface type.
+		System.Type inputInterfaceType = inputInterface.GetType();
+		if (inputInterfaceType == typeof(HEU_InputInterfaceMesh))
+		{
+		    HEU_InputInterfaceMesh meshInterface = inputInterface as HEU_InputInterfaceMesh;
+		    meshInterface.Initialize(inputNode.MeshSettings);
+		}
+		if (inputInterfaceType == typeof(HEU_InputInterfaceTilemap))
+		{
+		    HEU_InputInterfaceTilemap tilemapInterface = inputInterface as HEU_InputInterfaceTilemap;
+		    tilemapInterface.Initialize(inputNode.TilemapSettings);
 		}
 
 		bool bResult = inputInterface.CreateInputNodeWithDataUpload(session, connectMergeID, inputObjects[i]._gameObject, out newConnectInputID);
 		if (!bResult || newConnectInputID == HEU_Defines.HEU_INVALID_NODE_ID)
 		{
-		    Debug.LogError("Failed to upload input.");
+		    HEU_Logger.LogError("Failed to upload input.");
 		    continue;
 		}
 
@@ -224,7 +238,7 @@ namespace HoudiniEngineUnity
 
 		if (!session.ConnectNodeInput(connectMergeID, i, newConnectInputID))
 		{
-		    Debug.LogErrorFormat("Unable to connect input nodes!");
+		    HEU_Logger.LogErrorFormat("Unable to connect input nodes!");
 		    return false;
 		}
 
@@ -234,14 +248,14 @@ namespace HoudiniEngineUnity
 	    return true;
 	}
 
-	public static bool CreateInputNodeWithMultiAssets(HEU_SessionBase session, HEU_HoudiniAsset parentAsset,
+	internal static bool CreateInputNodeWithMultiAssets(HEU_SessionBase session, HEU_HoudiniAsset parentAsset,
 		ref HAPI_NodeId connectMergeID, ref List<HEU_InputHDAInfo> inputAssetInfos,
 		 bool bKeepWorldTransform, HAPI_NodeId mergeParentID = -1)
 	{
 	    // Create the merge SOP node that the input nodes are going to connect to.
 	    if (!session.CreateNode(mergeParentID, "SOP/merge", null, true, out connectMergeID))
 	    {
-		Debug.LogErrorFormat("Unable to create merge SOP node for connecting input assets.");
+		HEU_Logger.LogErrorFormat("Unable to create merge SOP node for connecting input assets.");
 		return false;
 	    }
 
@@ -277,12 +291,13 @@ namespace HoudiniEngineUnity
 
 		if (!session.ConnectNodeInput(connectMergeID, i, inputAssetID))
 		{
-		    Debug.LogErrorFormat("Unable to connect input nodes!");
+		    HEU_Logger.LogErrorFormat("Unable to connect input nodes!");
 		    return false;
 		}
 
 		inputAssetInfos[i]._connectedInputNodeID = inputAssetID;
 		inputAssetInfos[i]._connectedGO = inputAssetInfos[i]._pendingGO;
+		inputAssetInfos[i]._connectedMergeNodeID = connectMergeID;
 
 		parentAsset.ConnectToUpstream(inputAssetRoot._houdiniAsset);
 	    }
@@ -298,7 +313,7 @@ namespace HoudiniEngineUnity
 	/// <param name="inputNodeID">The input node ID</param>
 	/// <param name="bKeepWorldTransform">Whether to use world transform or not</param>
 	/// <returns></returns>
-	public static bool UploadInputObjectTransform(HEU_SessionBase session, HEU_InputObjectInfo inputObject, HAPI_NodeId inputNodeID, bool bKeepWorldTransform)
+	internal static bool UploadInputObjectTransform(HEU_SessionBase session, HEU_InputObjectInfo inputObject, HAPI_NodeId inputNodeID, bool bKeepWorldTransform)
 	{
 	    Matrix4x4 inputTransform = Matrix4x4.identity;
 	    if (inputObject._useTransformOffset)
@@ -336,9 +351,29 @@ namespace HoudiniEngineUnity
 	    if (session.SetObjectTransform(inputNodeInfo.parentId, ref transformEuler))
 	    {
 		inputObject._syncdTransform = inputTransform;
+
+		inputObject._syncdChildTransforms.Clear();
+
+		GetChildrenTransforms(inputObject._gameObject.transform, ref inputObject._syncdChildTransforms);
 	    }
 
 	    return true;
+	}
+
+	// Get the child transform using DFS.
+	public static void GetChildrenTransforms(Transform transform, ref List<Matrix4x4> childTransforms)
+	{
+	    if (transform == null || transform.childCount == 0 || childTransforms == null)
+	    {
+		return;
+	    }
+
+	    for (int i = 0; i < transform.childCount; i++)
+	    {
+		Transform childTransform = transform.GetChild(i);
+		childTransforms.Add(childTransform.localToWorldMatrix);
+		GetChildrenTransforms(childTransform, ref childTransforms);
+	    }
 	}
     }
 

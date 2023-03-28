@@ -164,6 +164,11 @@ namespace HoudiniEngineUnity
 
 	    // Always add the default shelf
 	    HEU_Shelf defaultShelf = AddShelf(HEU_Defines.HEU_HENGINE_SHIPPED_SHELF, HEU_Defines.HEU_HENGINE_TOOLS_SHIPPED_FOLDER);
+	    if (defaultShelf == null)
+	    {
+		return;
+	    }
+	    
 	    defaultShelf._defaultShelf = true;
 
 	    List<string> shelfEntries = HEU_PluginSettings.HEngineToolsShelves;
@@ -197,7 +202,7 @@ namespace HoudiniEngineUnity
 		}
 		else
 		{
-		    Debug.LogWarningFormat("Found invalid shelf with entry: {0}", shelfEntries[i]);
+		    HEU_Logger.LogWarningFormat("Found invalid shelf with entry: {0}", shelfEntries[i]);
 		    shelfEntries.RemoveAt(i);
 		    i--;
 		    bSaveShelf = true;
@@ -210,14 +215,14 @@ namespace HoudiniEngineUnity
 
 		if (!HEU_Platform.DoesPathExist(realShelfPath))
 		{
-		    Debug.LogWarningFormat("Shelf path does not exist: {0}", realShelfPath);
+		    HEU_Logger.LogWarningFormat("Shelf path does not exist: {0}", realShelfPath);
 		}
 		else
 		{
 		    bool bShelfLoaded = LoadToolsFromDirectory(realShelfPath, out shelf._tools);
 		    if (!bShelfLoaded)
 		    {
-			Debug.LogWarningFormat("Failed to load shelf {0} at path {1}", shelf._shelfName, realShelfPath);
+			HEU_Logger.LogWarningFormat("Failed to load shelf {0} at path {1}", shelf._shelfName, realShelfPath);
 		    }
 		}
 	    }
@@ -261,7 +266,7 @@ namespace HoudiniEngineUnity
 	    }
 	    catch (System.Exception ex)
 	    {
-		Debug.LogErrorFormat("Parsing JSON files in directory caused exception: {0}", ex);
+		HEU_Logger.LogErrorFormat("Parsing JSON files in directory caused exception: {0}", ex);
 		return false;
 	    }
 
@@ -279,7 +284,7 @@ namespace HoudiniEngineUnity
 	    }
 	    catch (System.Exception ex)
 	    {
-		Debug.LogErrorFormat("Exception while reading {0}: {1}", jsonFilePath, ex);
+		HEU_Logger.LogErrorFormat("Exception while reading {0}: {1}", jsonFilePath, ex);
 		return null;
 	    }
 
@@ -289,7 +294,7 @@ namespace HoudiniEngineUnity
 
 	public static HEU_ShelfToolData LoadToolFromJsonString(string json, string jsonFilePath)
 	{
-	    //Debug.Log("Loading json: " + jsonFilePath);
+	    //HEU_Logger.Log("Loading json: " + jsonFilePath);
 
 	    // Get environment variable for tool path
 	    string envValue = HEU_Platform.GetEnvironmentValue(HEU_Defines.HEU_PATH_KEY_TOOL);
@@ -335,7 +340,7 @@ namespace HoudiniEngineUnity
 		}
 		catch (System.Exception ex)
 		{
-		    Debug.LogErrorFormat("Exception when trying to parse shelf json file at path: {0}. Exception: {1}", jsonFilePath, ex.ToString());
+		    HEU_Logger.LogErrorFormat("Exception when trying to parse shelf json file at path: {0}. Exception: {1}", jsonFilePath, ex.ToString());
 		    return null;
 		}
 
@@ -367,7 +372,7 @@ namespace HoudiniEngineUnity
 			    {
 				if (string.IsNullOrEmpty(envValue))
 				{
-				    Debug.LogErrorFormat("Environment value {0} used but not set in environment.", HEU_Defines.HEU_PATH_KEY_TOOL);
+				    HEU_Logger.LogErrorFormat("Environment value {0} used but not set in environment.", HEU_Defines.HEU_PATH_KEY_TOOL);
 				}
 				else
 				{
@@ -383,7 +388,7 @@ namespace HoudiniEngineUnity
 			string realPath = HEU_PluginStorage.Instance.ConvertEnvKeyedPathToReal(toolData._assetPath);
 			if (!HEU_Platform.DoesFileExist(realPath))
 			{
-			    Debug.LogErrorFormat("Houdini Engine shelf tool at {0} does not exist!", realPath);
+			    HEU_Logger.LogErrorFormat("Houdini Engine shelf tool at {0} does not exist!", realPath);
 			    return null;
 			}
 
@@ -394,7 +399,7 @@ namespace HoudiniEngineUnity
 			    {
 				if (string.IsNullOrEmpty(envValue))
 				{
-				    Debug.LogErrorFormat("Environment value {0} used but not set in environment.", HEU_Defines.HEU_PATH_KEY_TOOL);
+				    HEU_Logger.LogErrorFormat("Environment value {0} used but not set in environment.", HEU_Defines.HEU_PATH_KEY_TOOL);
 				}
 				else
 				{
@@ -417,6 +422,16 @@ namespace HoudiniEngineUnity
 
 	public static HEU_Shelf AddShelf(string shelfName, string shelfPath)
 	{
+	    if (_shelves.Find((HEU_Shelf shelf) => shelf._shelfName == shelfName) != null)
+	    {
+		return null;
+	    }
+
+	    if (!HEU_AssetDatabase.IsValidFolderName(shelfName))
+	    {
+		return null;
+	    }
+
 	    HEU_Shelf newShelf = new HEU_Shelf();
 	    newShelf._shelfName = shelfName;
 	    newShelf._shelfPath = shelfPath;
@@ -464,13 +479,13 @@ namespace HoudiniEngineUnity
 	{
 	    if (_currentSelectedShelf < 0 && _currentSelectedShelf >= _shelves.Count)
 	    {
-		Debug.LogWarning("Invalid shelf selected. Unable to apply tool.");
+		HEU_Logger.LogWarning("Invalid shelf selected. Unable to apply tool.");
 		return;
 	    }
 
 	    if (toolSlot < 0 || toolSlot >= _shelves[_currentSelectedShelf]._tools.Count)
 	    {
-		Debug.LogWarning("Invalid tool selected. Unable to apply tool.");
+		HEU_Logger.LogWarning("Invalid tool selected. Unable to apply tool.");
 		return;
 	    }
 
@@ -520,18 +535,57 @@ namespace HoudiniEngineUnity
 	    }
 	    else
 	    {
-		Debug.LogWarningFormat("Failed to instantiate tool: {0}", toolName);
+		HEU_Logger.LogWarningFormat("Failed to instantiate tool: {0}", toolName);
 	    }
 	}
 
-	public static bool IsValidInput(GameObject gameObject)
+	public static bool IsValidInputMesh(GameObject gameObject)
+	{
+	    if (gameObject == null)
+	    {
+		return false;
+	    }
+	
+	    if (gameObject.GetComponent<MeshFilter>() && gameObject.GetComponent<MeshFilter>().sharedMesh != null)
+	        return true;
+	
+	    if (gameObject.GetComponent<Terrain>())
+	        return true;
+	
+	    if (gameObject.GetComponent<HEU_BoundingVolume>())
+	        return true;
+
+	    if (gameObject.GetComponent<UnityEngine.Tilemaps.Tilemap>())
+	        return true;
+	
+	    return false;
+	}
+
+	public static bool IsValidInputHDA(GameObject gameObject)
 	{
 	    if (gameObject != null)
 	    {
-		MeshFilter meshfilter = gameObject.GetComponent<MeshFilter>();
-		return (meshfilter != null && meshfilter.sharedMesh != null);
+		return gameObject.GetComponent<HEU_HoudiniAssetRoot>() != null;
 	    }
 	    return false;
+	}
+
+	private static bool ShouldUseHDA(GameObject[] gameObjectList)
+	{
+	    if (gameObjectList == null)
+	    {
+		return false;
+	    }
+
+	    for (int i = 0; i < gameObjectList.Length; i++)
+	    {
+		if (!IsValidInputHDA(gameObjectList[i]))
+		{
+		    return false;
+		}
+	    }
+
+	    return true;
 	}
 
 	public static void ExecuteToolNoInput(string toolName, string toolPath)
@@ -539,7 +593,7 @@ namespace HoudiniEngineUnity
 	    GameObject go = HEU_HAPIUtility.InstantiateHDA(toolPath, Vector3.zero, HEU_SessionManager.GetOrCreateDefaultSession(), false);
 	    if (go == null)
 	    {
-		Debug.LogWarningFormat("Failed to instantiate tool: {0}", toolName);
+		HEU_Logger.LogWarningFormat("Failed to instantiate tool: {0}", toolName);
 	    }
 	    else
 	    {
@@ -551,15 +605,30 @@ namespace HoudiniEngineUnity
 	{
 	    // Single operator means single asset input. If multiple inputs are provided, create tool for each input.
 
+	    bool bShouldUseHDA = ShouldUseHDA(inputObjects);
+
 	    List<GameObject> outputObjectsToSelect = new List<GameObject>();
 
 	    int numInputs = inputObjects.Length;
 	    for (int i = 0; i < numInputs; ++i)
 	    {
-		if (!IsValidInput(inputObjects[i]))
+		if (inputObjects[i] == null)
 		{
 		    continue;
 		}
+
+		if (!bShouldUseHDA && !IsValidInputMesh(inputObjects[i]))
+		{
+		    HEU_Logger.LogWarningFormat("Specified object {0} does not contain a valid mesh!", inputObjects[i].name);
+		    continue;
+		}
+
+		if (bShouldUseHDA && !IsValidInputHDA(inputObjects[i]))
+		{
+		    HEU_Logger.LogWarningFormat("Specified object {0} does not contain a valid HDA input!", inputObjects[i].name);
+		    continue;
+		}
+
 		GameObject inputObject = inputObjects[i];
 
 		GameObject go = HEU_HAPIUtility.InstantiateHDA(toolPath, Vector3.zero, HEU_SessionManager.GetOrCreateDefaultSession(), false);
@@ -574,7 +643,7 @@ namespace HoudiniEngineUnity
 			List<HEU_InputNode> inputNodes = asset.GetInputNodes();
 			if (inputNodes == null || inputNodes.Count == 0)
 			{
-			    Debug.LogErrorFormat("Unable to assign input geometry due to no asset inputs on selected tool.");
+			    HEU_Logger.LogErrorFormat("Unable to assign input geometry due to no asset inputs on selected tool.");
 			}
 			else
 			{
@@ -582,24 +651,53 @@ namespace HoudiniEngineUnity
 
 			    inputNode.ResetInputNode(session);
 
-			    inputNode.ChangeInputType(session, HEU_InputNode.InputObjectType.UNITY_MESH);
+			    if (!bShouldUseHDA)
+			    {
+				inputNode.ChangeInputType(session, HEU_InputNode.InputObjectType.UNITY_MESH);
 
-			    HEU_InputObjectInfo inputInfo = inputNode.AddInputEntryAtEnd(inputObject);
-			    inputInfo._useTransformOffset = false;
-			    inputNode.KeepWorldTransform = true;
-			    inputNode.PackGeometryBeforeMerging = false;
+				HEU_InputObjectInfo inputInfo = inputNode.AddInputEntryAtEndMesh(inputObject);
+				if (inputInfo != null)
+				{
+				    inputInfo._useTransformOffset = false;
+				    inputNode.KeepWorldTransform = true;
+				    inputNode.PackGeometryBeforeMerging = false;
 
-			    inputNode.RequiresUpload = true;
+				    inputNode.RequiresUpload = true;
 
-			    asset.RequestCook(true, true, true, true);
+				    asset.RequestCook(true, true, true, true);
 
-			    outputObjectsToSelect.Add(assetRoot.gameObject);
+				    outputObjectsToSelect.Add(assetRoot.gameObject);
+				}
+				else
+				{
+				    HEU_Logger.LogErrorFormat("Invalid input format: {0}", inputObject.gameObject.name);
+				}
+			    }
+			    else
+			    {
+				inputNode.ChangeInputType(session, HEU_InputNode.InputObjectType.HDA);
+
+				HEU_InputHDAInfo inputHDAInfo = inputNode.AddInputEntryAtEndHDA(inputObject);
+				if (inputHDAInfo != null)
+				{
+				    inputNode.KeepWorldTransform = true;
+				    inputNode.PackGeometryBeforeMerging = false;
+
+				    inputNode.RequiresUpload = true;
+				    asset.RequestCook(true, true, true, true);
+				    outputObjectsToSelect.Add(assetRoot.gameObject);
+				}
+				else
+				{
+				    HEU_Logger.LogErrorFormat("Invalid input format: {0}", inputObject.gameObject.name);
+				}
+			    }
 			}
 		    }
 		}
 		else
 		{
-		    Debug.LogWarningFormat("Failed to instantiate tool: {0}", toolName);
+		    HEU_Logger.LogWarningFormat("Failed to instantiate tool: {0}", toolName);
 		}
 	    }
 
@@ -616,7 +714,7 @@ namespace HoudiniEngineUnity
 	    GameObject go = HEU_HAPIUtility.InstantiateHDA(toolPath, Vector3.zero, HEU_SessionManager.GetOrCreateDefaultSession(), false);
 	    if (go == null)
 	    {
-		Debug.LogWarningFormat("Failed to instantiate tool: {0}", toolName);
+		HEU_Logger.LogWarningFormat("Failed to instantiate tool: {0}", toolName);
 		return;
 	    }
 
@@ -631,7 +729,7 @@ namespace HoudiniEngineUnity
 		List<HEU_InputNode> inputNodes = asset.GetInputNodes();
 		if (inputNodes == null || inputNodes.Count == 0)
 		{
-		    Debug.LogErrorFormat("Unable to assign input geometry due to no asset inputs on selected tool.");
+		    HEU_Logger.LogErrorFormat("Unable to assign input geometry due to no asset inputs on selected tool.");
 		}
 		else
 		{
@@ -640,23 +738,58 @@ namespace HoudiniEngineUnity
 		    int minInputCount = Mathf.Min(inputNodes.Count, numInputs);
 		    for (int i = 0; i < minInputCount; ++i)
 		    {
-			if (!IsValidInput(inputObjects[i]))
+			bool bShouldUseHDA = IsValidInputHDA(inputObjects[i]);
+
+			if (!bShouldUseHDA &&!IsValidInputMesh(inputObjects[i]))
 			{
 			    continue;
 			}
+			else if (bShouldUseHDA && !IsValidInputHDA(inputObjects[i]))
+			{
+			    continue;
+			}
+			
 			GameObject inputObject = inputObjects[i];
 
 			HEU_InputNode inputNode = inputNodes[i];
 			inputNode.ResetInputNode(session);
 
-			inputNode.ChangeInputType(session, HEU_InputNode.InputObjectType.UNITY_MESH);
 
-			HEU_InputObjectInfo inputInfo = inputNode.AddInputEntryAtEnd(inputObject);
-			inputInfo._useTransformOffset = false;
-			inputNode.KeepWorldTransform = true;
-			inputNode.PackGeometryBeforeMerging = false;
+			if (!bShouldUseHDA)
+			{
+			    inputNode.ChangeInputType(session, HEU_InputNode.InputObjectType.UNITY_MESH);
+    
+			    HEU_InputObjectInfo inputInfo = inputNode.AddInputEntryAtEndMesh(inputObject);
+			    if (inputInfo != null)
+			    {
+			        inputInfo._useTransformOffset = false;
+			        inputNode.KeepWorldTransform = true;
+			        inputNode.PackGeometryBeforeMerging = false;
+    
+			        inputNode.RequiresUpload = true;
+			    }
+			    else
+			    {
+			        HEU_Logger.LogErrorFormat("Invalid input format: {0}", inputObject.gameObject.name);
+			    }
+			}
+			else
+			{
+			    inputNode.ChangeInputType(session, HEU_InputNode.InputObjectType.HDA);
 
-			inputNode.RequiresUpload = true;
+			    HEU_InputHDAInfo inputHDAInfo = inputNode.AddInputEntryAtEndHDA(inputObject);
+			    if (inputHDAInfo != null)
+			    {
+			        inputNode.KeepWorldTransform = true;
+			        inputNode.PackGeometryBeforeMerging = false;
+    
+			        inputNode.RequiresUpload = true;
+			    }
+			    else
+			    {
+			        HEU_Logger.LogErrorFormat("Invalid input format: {0}", inputObject.gameObject.name);
+			    }
+			}
 		    }
 
 		    asset.RequestCook(true, true, true, true);

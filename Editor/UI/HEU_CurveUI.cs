@@ -73,6 +73,10 @@ namespace HoudiniEngineUnity
 		"You can add and edit curve points similar to the Houdini Curve tool."
 		+ "\nSelect ADD or EDIT mode or switch to them using Space.";
 
+	private const string _curveViewHelp2 =
+		"You can add and edit curve points similar to the Houdini Curve tool."
+		+ "\nSelect ADD or EDIT mode or switch to them using F2.";
+
 	private const float _rayCastMaxDistance = 5000f;
 
 	GUIContent[] InteractionModeLabels = new GUIContent[]
@@ -153,7 +157,7 @@ namespace HoudiniEngineUnity
 	    _lineTexture.SetPixel(0, 1, new Color(1, 1, 0, 1));
 	    _lineTexture.Apply();
 
-	    _infoRect = new Rect(10, 10, 500, 220);
+	    _infoRect = new Rect(10, 10, 600, 220);
 
 	    GUISkin heuSkin = HEU_EditorUI.LoadHEUSkin();
 	    _toolsBGStyle = heuSkin.GetStyle("toolsbg");
@@ -175,7 +179,73 @@ namespace HoudiniEngineUnity
 
 	    _showInfo = false;
 	    _showInfoRepaint = false;
+
+#if UNITY_2019_1_OR_NEWER
+	    SceneView.duringSceneGui += OnSceneGUIDelegate;
+#else
+	    SceneView.onSceneGUIDelegate += OnSceneGUIDelegate;
+#endif
 	}
+
+	private void OnSceneGUIDelegate(SceneView sceneView)
+	{
+	    if (Event.current.type == EventType.ExecuteCommand)
+	    {
+		if (Event.current.commandName == "FrameSelected")
+		{
+		    if (Selection.activeGameObject != null && _selectedCurvePoints != null && _selectedCurvePoints.Count > 0)
+		    {
+			// Get the center point
+			Vector3 handleCenter = Vector3.zero;
+			Bounds bounds = new Bounds();
+			int numPoints = 0;
+
+			HEU_HoudiniAsset parentAsset = null;
+			foreach (KeyValuePair<string, List<int>> curvePoints in _selectedCurvePoints)
+			{
+			    List<int> selectedPoints = curvePoints.Value;
+			    if (selectedPoints.Count > 0)
+			    {
+			        SerializedObject serializedCurve = GetOrCreateSerializedCurve(curvePoints.Key);
+			        SerializedProperty curveNodesProperty = serializedCurve.FindProperty("_curveNodeData");
+
+			        HEU_Curve curve = serializedCurve.targetObject as HEU_Curve;
+
+				parentAsset = curve.ParentAsset; // They should all be the same, so it shouldn't matter
+
+			        foreach (int selectedPoint in selectedPoints)
+			        {
+				    Vector3 pointPos = curve.GetTransformedPosition(curve.CurveNodeData[selectedPoint].position);
+				    if (numPoints == 0)
+				    {
+				        bounds = new Bounds(pointPos, Vector3.zero);
+				    }
+				    else
+				    {
+				        bounds.Encapsulate(pointPos);
+				    }
+
+				    numPoints++;
+			        }
+			    }
+			}
+
+			if (parentAsset != null && parentAsset.CurveFrameSelectedNodes)
+			{
+			    // Overwrite the existing command
+			    Event.current.commandName = "";
+			    Event.current.Use();
+
+			    handleCenter = bounds.center;
+
+			    float viewDistance = parentAsset.CurveFrameSelectedNodeDistance;
+			    sceneView.LookAt(handleCenter, sceneView.rotation, viewDistance);
+			}
+		    }
+		}
+	    }
+	}
+
 
 	/// <summary>
 	/// Callback when selection has changed.
@@ -217,6 +287,13 @@ namespace HoudiniEngineUnity
 
 	    _dragMouseDown = false;
 	    _cleanMouseDown = false;
+
+#if UNITY_2019_1_OR_NEWER
+	    SceneView.duringSceneGui -= OnSceneGUIDelegate;
+#else
+	    SceneView.onSceneGUIDelegate -= OnSceneGUIDelegate;
+#endif
+
 	}
 
 	/// <summary>
@@ -280,17 +357,21 @@ namespace HoudiniEngineUnity
 	    // Keep track of curves that were updated so we can apply changes via serialization
 	    List<SerializedObject> updatedCurves = new List<SerializedObject>();
 
+	    bool bMouseInDrawArea = HEU_GeneralUtility.IsMouseWithinSceneView(_currentCamera, mousePosition)
+		    && !HEU_GeneralUtility.IsMouseOverRect(_currentCamera, mousePosition, ref _curveEditorUIRect)
+		    && (!_showInfoRepaint || !HEU_GeneralUtility.IsMouseOverRect(_currentCamera, mousePosition, ref _infoRect));
+
 	    if (_interactionMode == HEU_Curve.Interaction.VIEW)
 	    {
-		UpdateViewMode(asset, controlID, eventType, mousePosition, updatedCurves);
+		UpdateViewMode(asset, controlID, eventType, mousePosition, updatedCurves, bMouseInDrawArea);
 	    }
 	    else if (_interactionMode == HEU_Curve.Interaction.ADD)
 	    {
-		UpdateAddMode(asset, controlID, eventType, mousePosition, updatedCurves);
+		UpdateAddMode(asset, controlID, eventType, mousePosition, updatedCurves, bMouseInDrawArea);
 	    }
 	    else if (_interactionMode == HEU_Curve.Interaction.EDIT)
 	    {
-		UpdateEditMode(asset, controlID, eventType, mousePosition, updatedCurves);
+		UpdateEditMode(asset, controlID, eventType, mousePosition, updatedCurves, bMouseInDrawArea);
 	    }
 
 	    if (EditorGUI.EndChangeCheck())
@@ -312,7 +393,7 @@ namespace HoudiniEngineUnity
 	    DrawSceneInfo();
 	}
 
-	private void UpdateViewMode(HEU_HoudiniAsset asset, int controlID, EventType eventType, Vector3 mousePosition, List<SerializedObject> updatedCurves)
+	private void UpdateViewMode(HEU_HoudiniAsset asset, int controlID, EventType eventType, Vector3 mousePosition, List<SerializedObject> updatedCurves, bool bMouseInDrawArea)
 	{
 	    Event currentEvent = Event.current;
 
@@ -330,7 +411,7 @@ namespace HoudiniEngineUnity
 		}
 		case EventType.KeyUp:
 		{
-		    if (!currentEvent.alt && currentEvent.keyCode == KeyCode.Space)
+		    if (!currentEvent.alt && currentEvent.keyCode == ToggleModeHotkey())
 		    {
 			// Toggle modes
 			SwitchToMode(HEU_Curve.Interaction.ADD);
@@ -368,7 +449,7 @@ namespace HoudiniEngineUnity
 	    }
 	}
 
-	private void UpdateAddMode(HEU_HoudiniAsset asset, int controlID, EventType eventType, Vector3 mousePosition, List<SerializedObject> updatedCurves)
+	private void UpdateAddMode(HEU_HoudiniAsset asset, int controlID, EventType eventType, Vector3 mousePosition, List<SerializedObject> updatedCurves, bool bMouseInDrawArea)
 	{
 	    Event currentEvent = Event.current;
 
@@ -380,7 +461,7 @@ namespace HoudiniEngineUnity
 		{
 		    if (!currentEvent.alt && currentEvent.button == 0 && _closestCurveName != null && _closestPointIndex >= 0)
 		    {
-			AddPoint(_closestCurveName, _closestPointIndex, _newPointPosition, updatedCurves);
+			AddPoint(_closestCurveName, _closestPointIndex, _newPointPosition, updatedCurves, false);
 			_closestCurveName = null;
 
 			currentEvent.Use();
@@ -401,7 +482,7 @@ namespace HoudiniEngineUnity
 		}
 		case EventType.KeyUp:
 		{
-		    if (currentEvent.keyCode == KeyCode.Space && !currentEvent.alt)
+		    if (currentEvent.keyCode == ToggleModeHotkey() && !currentEvent.alt)
 		    {
 			// Toggle modes
 			SwitchToMode(HEU_Curve.Interaction.EDIT);
@@ -456,255 +537,331 @@ namespace HoudiniEngineUnity
 		}
 		case EventType.Repaint:
 		{
-		    bool bMouseInDrawArea = HEU_GeneralUtility.IsMouseWithinSceneView(_currentCamera, mousePosition)
-			    && !HEU_GeneralUtility.IsMouseOverRect(_currentCamera, mousePosition, ref _curveEditorUIRect)
-			    && (!_showInfoRepaint || !HEU_GeneralUtility.IsMouseOverRect(_currentCamera, mousePosition, ref _infoRect));
-
-		    // Plane for default collider
-		    Plane collisionPlane = new Plane(Vector3.up, Vector3.zero);
-		    //Ray mouseRay = _currentCamera.ScreenPointToRay(mousePosition);
-		    //Vector3 planePosition = mouseRay.origin + mouseRay.direction * 100f;
-		    //Plane collisionPlane = new Plane(-_currentCamera.transform.forward, planePosition);
-
-		    HEU_Curve.CurveDrawCollision drawCollision = asset.CurveDrawCollision;
-		    List<Collider> drawColliders = null;
-		    LayerMask drawLayerMask = Physics.DefaultRaycastLayers;
-		    if (drawCollision == HEU_Curve.CurveDrawCollision.LAYERMASK)
-		    {
-			drawLayerMask = asset.GetCurveDrawLayerMask();
-		    }
-		    else if (drawCollision == HEU_Curve.CurveDrawCollision.COLLIDERS)
-		    {
-			drawColliders = asset.GetCurveDrawColliders();
-		    }
-
-		    // Adding new point between line segments
-
-		    _closestPointIndex = -1;
-		    _closestCurveName = null;
-		    _newPointPosition = Vector3.zero;
-
-		    float closestDistance = float.MaxValue;
-
-		    foreach (HEU_Curve curve in _curves)
-		    {
-			// Draw the cooked curve using its vertices
-			DrawCurveUsingVertices(curve, _selectedCurveColor);
-
-			DrawPointCaps(curve, _addModeDefaultPointColor);
-
-			List<Vector3> points = curve.GetAllPoints();
-			int numPoints = points.Count;
-
-			if (_currentCamera != null && bMouseInDrawArea)
-			{
-			    Ray ray = _currentCamera.ScreenPointToRay(mousePosition);
-			    RaycastHit[] results = null;
-
-			    if (numPoints > 0 && (_newPointMode == CurveNewPointMode.INSIDE))
-			    {
-				// Control -> add point between closest line segment
-
-				for (int i = 0; i < numPoints - 1; ++i)
-				{
-				    Vector3 pointPos0 = curve.GetTransformedPosition(points[i]);
-				    Vector3 pointPos1 = curve.GetTransformedPosition(points[i + 1]);
-
-				    Vector3 screenPos0 = HEU_EditorUI.GetHandleWorldToScreenPosition(pointPos0, _currentCamera);
-				    Vector3 screenPos1 = HEU_EditorUI.GetHandleWorldToScreenPosition(pointPos1, _currentCamera);
-
-				    float distance = HandleUtility.DistancePointToLineSegment(mousePosition, screenPos0, screenPos1);
-				    if (distance < closestDistance)
-				    {
-					closestDistance = distance;
-					_closestPointIndex = i + 1;
-					_closestCurveName = curve.CurveName;
-				    }
-				}
-			    }
-			    else
-			    {
-				// Show new point from either end of curve, whichever is closest.
-				// Use collision to find new point.
-
-				Vector3 hitPoint = Vector3.zero;
-				bool bHit = false;
-
-				if (drawCollision == HEU_Curve.CurveDrawCollision.LAYERMASK)
-				{
-				    // Using layermask
-				    RaycastHit hitInfo;
-				    if (Physics.Raycast(ray, out hitInfo, _rayCastMaxDistance, drawLayerMask))
-				    {
-					hitPoint = hitInfo.point;
-					bHit = true;
-				    }
-				}
-				else if (drawColliders != null && drawColliders.Count > 0)
-				{
-				    // Using colliders
-				    results = Physics.RaycastAll(ray, _rayCastMaxDistance, drawLayerMask);
-				    foreach (RaycastHit hit in results)
-				    {
-					foreach (Collider drawCollider in drawColliders)
-					{
-					    if (hit.collider == drawCollider)
-					    {
-						hitPoint = hit.point;
-						bHit = true;
-						break;
-					    }
-					}
-				    }
-				}
-				else
-				{
-				    // Using identity plane
-				    float collisionEnter = 0f;
-				    if (collisionPlane.Raycast(ray, out collisionEnter))
-				    {
-					collisionEnter = Mathf.Clamp(collisionEnter, _currentCamera.nearClipPlane, _currentCamera.farClipPlane);
-					hitPoint = ray.origin + ray.direction * collisionEnter;
-					bHit = true;
-				    }
-				}
-
-				if (bHit)
-				{
-				    Vector3 hitPointScreenPosition = HEU_EditorUI.GetHandleWorldToScreenPosition(hitPoint, _currentCamera);
-
-				    // Find the closest point to add from (either first or last point)
-
-				    // Empty curve:
-				    // If its just a single curve, we can use the hit point as closest point.
-				    // For multiple curves, it gets trickier since we don't have an existing point
-				    // to check for closest point. So we'll just use the parent's transform position
-				    // as our anchor point.
-
-				    Vector3 checkPoint = Vector3.zero;
-				    int curveClosestPointIndex = 0;
-
-				    if (numPoints == 0)
-				    {
-					if (_curves.Count > 1)
-					{
-					    // Multiple curves -> use position of asset
-					    checkPoint = curve._targetGameObject.transform.position;
-					}
-					else
-					{
-					    // Single curve -> use hit point as closest
-					    checkPoint = hitPoint;
-					}
-				    }
-				    else if (_newPointMode == CurveNewPointMode.START)
-				    {
-					// Curve with at least 1 point + shift held -> use first point
-					checkPoint = HEU_EditorUI.GetHandleWorldToScreenPosition(curve.GetTransformedPoint(0), _currentCamera);
-					curveClosestPointIndex = 0;
-				    }
-				    else
-				    {
-					// Curve with at least 1 point -> use last point
-					checkPoint = HEU_EditorUI.GetHandleWorldToScreenPosition(curve.GetTransformedPoint(numPoints - 1), _currentCamera);
-					curveClosestPointIndex = numPoints;
-				    }
-
-				    float curveClosestPointDistance = Vector3.Distance(checkPoint, hitPointScreenPosition);
-				    if (curveClosestPointDistance < closestDistance)
-				    {
-					closestDistance = curveClosestPointDistance;
-					_closestPointIndex = curveClosestPointIndex;
-					_closestCurveName = curve.CurveName;
-					_newPointPosition = hitPoint;
-				    }
-
-				    // Snap to grid
-				    _newPointPosition = HEU_EditorUI.GetSnapPosition(_newPointPosition);
-				}
-			    }
-			}
-		    }
-
-		    // Note that curve name can be empty for valid empty curves
-		    if (_closestCurveName != null && _closestPointIndex >= 0)
-		    {
-			HEU_Curve closestCurve = GetCurve(_closestCurveName);
-			if (closestCurve != null)
-			{
-			    int numPoints = closestCurve.GetNumPoints();
-			    if ((_newPointMode == CurveNewPointMode.INSIDE) && !currentEvent.alt && numPoints >= 2)
-			    {
-				// Handle adding new point at projected mouse cursor between points
-
-				// First draw the curve line segments
-				DrawCurveUsingPoints(closestCurve, Color.yellow);
-
-				// Draw the caps again to hid the ends of line segments above (visually pleasing)
-				DrawPointCaps(closestCurve, _addModeDefaultPointColor);
-
-				Vector3 pointPos0 = closestCurve.GetTransformedPoint(_closestPointIndex - 1);
-				Vector3 pointPos1 = closestCurve.GetTransformedPoint(_closestPointIndex);
-
-				Vector3 screenPos0 = HEU_EditorUI.GetHandleWorldToScreenPosition(pointPos0, _currentCamera);
-				Vector3 screenPos1 = HEU_EditorUI.GetHandleWorldToScreenPosition(pointPos1, _currentCamera);
-
-				Vector3 curveNewPointPosition = HandleUtility.ProjectPointLine(mousePosition, screenPos0, screenPos1);
-
-				Vector2 deltaNew = curveNewPointPosition - screenPos0;
-				Vector2 deltaLine = screenPos1 - screenPos0;
-				float ratio = Mathf.Clamp01(deltaNew.magnitude / deltaLine.magnitude);
-
-				Vector3 newDir = (pointPos1 - pointPos0);
-				curveNewPointPosition = pointPos0 + (newDir.normalized * newDir.magnitude * ratio);
-
-				Handles.color = _selectedPointColor;
-				HEU_EditorUI.DrawSphereCap(GUIUtility.GetControlID(FocusType.Passive), curveNewPointPosition, Quaternion.identity, HEU_EditorUI.GetHandleSize(curveNewPointPosition));
-
-				Handles.color = Color.yellow;
-				HEU_EditorUI.DrawCircleCap(0, pointPos0, Quaternion.LookRotation(_currentCamera.transform.forward), HEU_EditorUI.GetHandleSize(pointPos0));
-				HEU_EditorUI.DrawCircleCap(0, pointPos1, Quaternion.LookRotation(_currentCamera.transform.forward), HEU_EditorUI.GetHandleSize(pointPos1));
-				Handles.color = defaultHandleColor;
-
-				_newPointPosition = curveNewPointPosition;
-
-				SceneView.RepaintAll();
-			    }
-			    else if (!currentEvent.alt)
-			    {
-				// Handle adding new point at closest curve's end points
-
-				if (closestCurve.GetNumPoints() > 0)
-				{
-				    // Draw dotted line from last point to newPointPosition
-				    int connectionPoint = (_closestPointIndex > 0) ? _closestPointIndex - 1 : 0;
-				    Vector3 pointPos0 = closestCurve.GetTransformedPoint(connectionPoint);
-				    Vector3[] dottedLineSegments = new Vector3[] { pointPos0, _newPointPosition };
-
-				    Handles.color = _dottedLineColor;
-				    Handles.DrawDottedLines(dottedLineSegments, 4f);
-				}
-
-				Handles.color = _selectedPointColor;
-				HEU_EditorUI.DrawSphereCap(GUIUtility.GetControlID(FocusType.Passive), _newPointPosition, Quaternion.identity, HEU_EditorUI.GetHandleSize(_newPointPosition));
-				Handles.color = defaultHandleColor;
-
-				SceneView.RepaintAll();
-			    }
-			}
-		    }
+		    this.RepaintAddNode(asset, controlID, eventType, mousePosition, _newPointMode, bMouseInDrawArea);
 
 		    break;
 		}
 	    }
 	}
 
-	private void UpdateEditMode(HEU_HoudiniAsset asset, int controlID, EventType eventType, Vector3 mousePosition, List<SerializedObject> updatedCurves)
+
+	private void RepaintAddNode(HEU_HoudiniAsset asset, int controlID, EventType eventType, Vector3 mousePosition, CurveNewPointMode curvePointMode, bool bMouseInDrawArea)
+	{
+	    Event currentEvent = Event.current;
+ 
+	    Color defaultHandleColor = Handles.color;
+
+	    // Plane for default collider
+	    Plane collisionPlane = new Plane(Vector3.up, Vector3.zero);
+	    //Ray mouseRay = _currentCamera.ScreenPointToRay(mousePosition);
+	    //Vector3 planePosition = mouseRay.origin + mouseRay.direction * 100f;
+	    //Plane collisionPlane = new Plane(-_currentCamera.transform.forward, planePosition);
+ 
+	    HEU_Curve.CurveDrawCollision drawCollision = asset.CurveDrawCollisionInternal;
+	    List<Collider> drawColliders = null;
+	    LayerMask drawLayerMask = Physics.DefaultRaycastLayers;
+	    if (drawCollision == HEU_Curve.CurveDrawCollision.LAYERMASK)
+	    {
+	        drawLayerMask = asset.GetCurveDrawLayerMask();
+	    }
+	    else if (drawCollision == HEU_Curve.CurveDrawCollision.COLLIDERS)
+	    {
+	        drawColliders = asset.GetCurveDrawColliders();
+	    }
+ 
+	    // Adding new point between line segments
+ 
+	    _closestPointIndex = -1;
+	    _closestCurveName = null;
+	    _newPointPosition = Vector3.zero;
+ 
+	    float closestDistance = float.MaxValue;
+ 
+	    foreach (HEU_Curve curve in _curves)
+	    {
+		// Draw the cooked curve using its vertices
+		DrawCurveUsingVertices(curve, _selectedCurveColor);
+ 
+		DrawPointCaps(curve, _addModeDefaultPointColor);
+ 
+		List<Vector3> points = curve.GetAllPoints();
+		int numPoints = points.Count;
+ 
+		if (_currentCamera != null && bMouseInDrawArea)
+		{
+		    Ray ray = _currentCamera.ScreenPointToRay(mousePosition);
+		    RaycastHit[] results = null;
+ 
+		    if (numPoints > 0 && (curvePointMode == CurveNewPointMode.INSIDE))
+		    {
+			GetClosestPointToCurve(mousePosition, curve, ref _closestPointIndex, ref _closestCurveName, ref closestDistance);
+		    }
+		    else
+		    {
+			// Show new point from either end of curve, whichever is closest.
+			// Use collision to find new point.
+			Vector3 hitPoint = Vector3.zero;
+			bool bHit = false;
+
+			if (drawCollision == HEU_Curve.CurveDrawCollision.LAYERMASK)
+			{
+			    // Using layermask
+			    RaycastHit hitInfo;
+			    if (Physics.Raycast(ray, out hitInfo, _rayCastMaxDistance, drawLayerMask))
+			    {
+				hitPoint = hitInfo.point;
+				bHit = true;
+			    }
+			}
+			else if (drawColliders != null && drawColliders.Count > 0)
+			{
+			    // Using colliders
+			    results = Physics.RaycastAll(ray, _rayCastMaxDistance, drawLayerMask);
+			    foreach (RaycastHit hit in results)
+			    {
+			        foreach (Collider drawCollider in drawColliders)
+			        {
+			            if (hit.collider == drawCollider)
+			            {
+					hitPoint = hit.point;
+					bHit = true;
+					break;
+				    }
+				}
+			    }
+			}
+			else
+			{
+			    // Using identity plane
+			    float collisionEnter = 0f;
+			    if (collisionPlane.Raycast(ray, out collisionEnter))
+			    {
+				collisionEnter = Mathf.Clamp(collisionEnter, _currentCamera.nearClipPlane, _currentCamera.farClipPlane);
+				hitPoint = ray.origin + ray.direction * collisionEnter;
+				bHit = true;
+			    }
+			}
+ 
+			if (bHit)
+			{
+			    Vector3 hitPointScreenPosition = HEU_EditorUI.GetHandleWorldToScreenPosition(hitPoint, _currentCamera);
+ 
+			    // Find the closest point to add from (either first or last point)
+
+			    // Empty curve:
+			    // If its just a single curve, we can use the hit point as closest point.
+			    // For multiple curves, it gets trickier since we don't have an existing point
+			    // to check for closest point. So we'll just use the parent's transform position
+			    // as our anchor point.
+
+			    Vector3 checkPoint = Vector3.zero;
+			    int curveClosestPointIndex = 0;
+
+			    if (numPoints == 0)
+			    {
+				if (_curves.Count > 1)
+				{
+				    // Multiple curves -> use position of asset
+				    checkPoint = curve.TargetGameObject.transform.position;
+				}
+				else
+				{
+				    // Single curve -> use hit point as closest
+				    checkPoint = hitPoint;
+				}
+			    }
+			else if (curvePointMode == CurveNewPointMode.START)
+			{
+			    // Curve with at least 1 point + shift held -> use first point
+			    checkPoint = HEU_EditorUI.GetHandleWorldToScreenPosition(curve.GetTransformedPoint(0), _currentCamera);
+			    curveClosestPointIndex = 0;
+			}
+			else
+			{
+			    // Curve with at least 1 point -> use last point
+			    checkPoint = HEU_EditorUI.GetHandleWorldToScreenPosition(curve.GetTransformedPoint(numPoints - 1), _currentCamera);
+			    curveClosestPointIndex = numPoints;
+			}
+ 
+			    float curveClosestPointDistance = Vector3.Distance(checkPoint, hitPointScreenPosition);
+			    if (curveClosestPointDistance < closestDistance)
+			    {
+				closestDistance = curveClosestPointDistance;
+				_closestPointIndex = curveClosestPointIndex;
+				_closestCurveName = curve.CurveName;
+				_newPointPosition = hitPoint;
+			    }
+ 
+			    // Snap to grid
+			    _newPointPosition = HEU_EditorUI.GetSnapPosition(_newPointPosition);
+		        }
+		    }
+		}
+	    }
+ 
+	    // Note that curve name can be empty for valid empty curves
+	    if (_closestCurveName != null && _closestPointIndex >= 0)
+	    {
+	    HEU_Curve closestCurve = GetCurve(_closestCurveName);
+	    if (closestCurve != null)
+	    {
+		int numPoints = closestCurve.GetNumPoints();
+		if ((curvePointMode == CurveNewPointMode.INSIDE) && !currentEvent.alt && numPoints >= 2)
+		{
+		// Handle adding new point at projected mouse cursor between points
+ 
+		// First draw the curve line segments
+		DrawCurveUsingPoints(closestCurve, Color.yellow);
+ 
+		// Draw the caps again to hid the ends of line segments above (visually pleasing)
+		DrawPointCaps(closestCurve, _addModeDefaultPointColor);
+ 
+		Vector3 pointPos0 = closestCurve.GetTransformedPoint(_closestPointIndex - 1);
+		Vector3 pointPos1 = closestCurve.GetTransformedPoint(_closestPointIndex);
+ 
+		Vector3 screenPos0 = HEU_EditorUI.GetHandleWorldToScreenPosition(pointPos0, _currentCamera);
+		Vector3 screenPos1 = HEU_EditorUI.GetHandleWorldToScreenPosition(pointPos1, _currentCamera);
+ 
+		Vector3 curveNewPointPosition = HandleUtility.ProjectPointLine(mousePosition, screenPos0, screenPos1);
+
+		Vector2 deltaNew = curveNewPointPosition - screenPos0;
+		Vector2 deltaLine = screenPos1 - screenPos0;
+		float ratio = Mathf.Clamp01(deltaNew.magnitude / deltaLine.magnitude);
+ 
+		Vector3 newDir = (pointPos1 - pointPos0);
+		curveNewPointPosition = pointPos0 + (newDir.normalized * newDir.magnitude * ratio);
+ 
+		Handles.color = _selectedPointColor;
+		HEU_EditorUI.DrawSphereCap(GUIUtility.GetControlID(FocusType.Passive), curveNewPointPosition, Quaternion.identity, HEU_EditorUI.GetHandleSize(curveNewPointPosition));
+ 
+		Handles.color = Color.yellow;
+		HEU_EditorUI.DrawCircleCap(0, pointPos0, Quaternion.LookRotation(_currentCamera.transform.forward), HEU_EditorUI.GetHandleSize(pointPos0));
+		HEU_EditorUI.DrawCircleCap(0, pointPos1, Quaternion.LookRotation(_currentCamera.transform.forward), HEU_EditorUI.GetHandleSize(pointPos1));
+		Handles.color = defaultHandleColor;
+ 
+		_newPointPosition = curveNewPointPosition;
+ 
+		SceneView.RepaintAll();
+		}
+		else if (!currentEvent.alt)
+		{
+		// Handle adding new point at closest curve's end points
+ 
+		if (closestCurve.GetNumPoints() > 0)
+		{
+		    // Draw dotted line from last point to newPointPosition
+		    int connectionPoint = (_closestPointIndex > 0) ? _closestPointIndex - 1 : 0;
+		    Vector3 pointPos0 = closestCurve.GetTransformedPoint(connectionPoint);
+		    Vector3[] dottedLineSegments = new Vector3[] { pointPos0, _newPointPosition };
+ 
+		    Handles.color = _dottedLineColor;
+		    Handles.DrawDottedLines(dottedLineSegments, 4f);
+		}
+ 
+		Handles.color = _selectedPointColor;
+		HEU_EditorUI.DrawSphereCap(GUIUtility.GetControlID(FocusType.Passive), _newPointPosition, Quaternion.identity, HEU_EditorUI.GetHandleSize(_newPointPosition));
+		Handles.color = defaultHandleColor;
+ 
+		SceneView.RepaintAll();
+		}
+	    }
+	    }
+	}
+
+	private void HybridEditAddMode(HEU_HoudiniAsset asset, int controlID, EventType eventType, Vector3 mousePosition, List<SerializedObject> updatedCurves, bool bMouseInDrawArea)
+	{
+	    Event currentEvent = Event.current;
+
+	    Color defaultHandleColor = Handles.color;
+	    if (!bMouseInDrawArea && eventType != EventType.Repaint)
+	    {
+		// Don't allow for any input, just allow for repaints
+		return;
+	    }
+
+	    switch (eventType)
+	    {
+		case EventType.MouseDown:
+		{
+		    if (!currentEvent.alt && currentEvent.button == 0 && _closestCurveName != null && _closestPointIndex >= 0)
+		    {
+			DeselectAllPoints();
+			AddPoint(_closestCurveName, _closestPointIndex, _newPointPosition, updatedCurves, true);
+			_closestCurveName = null;
+
+			currentEvent.Use();
+		    }
+
+		    break;
+		}
+		case EventType.MouseUp:
+		{
+		    break;
+		}
+		case EventType.MouseMove:
+		{
+		    // Use the mouse move event will force a repaint allowing for much more responsive UI
+		    currentEvent.Use();
+		    break;
+		}
+		case EventType.Layout:
+		{
+		    // This disables deselection on asset while in Add mode
+		    HandleUtility.AddDefaultControl(GUIUtility.GetControlID(FocusType.Passive));
+
+		    break;
+		}
+		case EventType.Repaint:
+		{
+
+		    float closestDistance = float.MaxValue;
+		    foreach (HEU_Curve curve in _curves)
+		    {
+		        GetClosestPointToCurve(mousePosition, curve, ref _closestPointIndex, ref _closestCurveName, ref closestDistance);
+		    }
+
+		    bool bIsMouseIntersectingClosestPoint = IsMouseIntersectingClosestCurve(mousePosition);
+
+		    if (bIsMouseIntersectingClosestPoint)
+		    {
+		        RepaintAddNode(asset, controlID, eventType, mousePosition, CurveNewPointMode.INSIDE, bMouseInDrawArea);
+		    }
+		    else
+		    {
+		        if (currentEvent.control)
+		        {
+			    RepaintAddNode(asset, controlID, eventType, mousePosition, CurveNewPointMode.START, bMouseInDrawArea);
+		        }
+		        else
+		        {
+			    RepaintAddNode(asset, controlID, eventType, mousePosition, CurveNewPointMode.END, bMouseInDrawArea);
+		        }
+		    }
+
+
+		    break;
+		}
+	    }
+	}
+
+	private void UpdateEditMode(HEU_HoudiniAsset asset, int controlID, EventType eventType, Vector3 mousePosition, List<SerializedObject> updatedCurves, bool bMouseInDrawArea)
 	{
 	    // In edit, we draw points as interactable buttons, allowing for selection/deselection.
 	    // We also draw drag handle for selected buttons.
 
 	    Event currentEvent = Event.current;
+
+	    if (currentEvent.shift && HEU_PluginSettings.UseHybridCurveEditing)
+	    {
+		HybridEditAddMode(asset, controlID, eventType, mousePosition, updatedCurves, bMouseInDrawArea);
+		return;
+	    }
+
+	    if (!bMouseInDrawArea && eventType != EventType.Repaint)
+	    {
+		// Only allow repainting if mouse is over UI
+		return;
+	    }
 
 	    // For multi-point selection, calculates bounds and centre point
 	    Bounds bounds = new Bounds();
@@ -715,6 +872,11 @@ namespace HoudiniEngineUnity
 	    bool isDraggingPoints = false;
 	    bool wasDraggingPoints = false;
 
+	    bool cookWhileDragging = false;
+
+	    bool disableCurveScaleRot = false;
+
+
 	    // Draw the curve points
 	    EditModeDrawCurvePoints(currentEvent, eventType, ref numSelectedPoints, ref bounds, ref bInteractionOcurred);
 
@@ -723,54 +885,166 @@ namespace HoudiniEngineUnity
 	    if (numSelectedPoints > 0)
 	    {
 		// Drag selected points
-
-		Vector3 dragHandlePosition = bounds.center;
-
-		// Let Unity do the transform handle magic
-		Vector3 newPosition = Handles.PositionHandle(dragHandlePosition, Quaternion.identity);
+		Vector3 handleCenter = bounds.center;
 		isDraggingPoints = (EditorGUIUtility.hotControl != 0);
+		cookWhileDragging = asset.CurveCookOnDrag;
+		disableCurveScaleRot = asset.CurveDisableScaleRotation;
 
-		Vector3 deltaMove = newPosition - dragHandlePosition;
-		if (deltaMove.magnitude > 0)
+
+		// Use rotation for every handle type
+		// From what I can see, Unity just selects the first rotation captured.
+		Quaternion handleRotation = Quaternion.identity;
+
+		Vector3 handleScale = Vector3.one;
+
+		if (!disableCurveScaleRot)
 		{
-		    // User dragged point(s)
-		    // We update point value here, but defer parameter coords update until after we finished editing
-
 		    foreach (KeyValuePair<string, List<int>> curvePoints in _selectedCurvePoints)
 		    {
 			List<int> selectedPoints = curvePoints.Value;
 			if (selectedPoints.Count > 0)
 			{
 			    SerializedObject serializedCurve = GetOrCreateSerializedCurve(curvePoints.Key);
-			    SerializedProperty curvePointsProperty = serializedCurve.FindProperty("_points");
+			    SerializedProperty curveNodesProperty = serializedCurve.FindProperty("_curveNodeData");
 
-			    foreach (int pointIndex in selectedPoints)
-			    {
-				SerializedProperty pointProperty = curvePointsProperty.GetArrayElementAtIndex(pointIndex);
-				Vector3 updatedPosition = pointProperty.vector3Value + deltaMove;
-
-				HEU_Curve curve = serializedCurve.targetObject as HEU_Curve;
-				if (curve != null)
-				{
-				    // Localize the movement vector to the curve point's transform,
-				    // since deltaMove is based on the transformed curve point,
-				    // and we're adding to the local curve point.
-				    Vector3 localDeltaMove = curve.GetInvertedTransformedDirection(deltaMove);
-				    updatedPosition = pointProperty.vector3Value + localDeltaMove;
-				}
-
-				pointProperty.vector3Value = updatedPosition;
-			    }
-
-			    // Setting to editing mode to flag that cooking needs to be deferred
-			    SetCurveState(HEU_Curve.CurveEditState.EDITING, serializedCurve);
-
-			    AddChangedSerializedObject(serializedCurve, updatedCurves);
+			    HEU_Curve curve = serializedCurve.targetObject as HEU_Curve;
+			    handleRotation = Quaternion.Euler(curve.CurveNodeData[selectedPoints[0]].rotation);
+			    handleScale = curve.CurveNodeData[selectedPoints[0]].scale;
 			}
 		    }
-
-		    bInteractionOcurred = true;
 		}
+
+		Tool currentTool = Tools.current;
+		if (disableCurveScaleRot)
+		{
+		    currentTool = Tool.Transform;
+		}
+		
+		switch (currentTool)
+		{
+		    case Tool.Rotate:
+			Quaternion newRotation = Handles.RotationHandle(handleRotation, handleCenter);
+			Quaternion deltaRotation = newRotation * Quaternion.Inverse(handleRotation);
+
+			if (!deltaRotation.ApproximatelyEquals(Quaternion.identity))
+			{
+			    foreach (KeyValuePair<string, List<int>> curvePoints in _selectedCurvePoints)
+			    {
+				List<int> selectedPoints = curvePoints.Value;
+				if (selectedPoints.Count > 0)
+				{
+				    SerializedObject serializedCurve = GetOrCreateSerializedCurve(curvePoints.Key);
+				    SerializedProperty curveNodesProperty = serializedCurve.FindProperty("_curveNodeData");
+
+				    foreach (int pointIndex in selectedPoints)
+				    {
+					SerializedProperty curveNodeProperty = curveNodesProperty.GetArrayElementAtIndex(pointIndex);
+					SerializedProperty pointRotationProperty = curveNodeProperty.FindPropertyRelative("rotation");
+					Quaternion rotation = Quaternion.Euler(pointRotationProperty.vector3Value);
+					Quaternion updatedQuaternion =  deltaRotation * rotation;
+					updatedQuaternion.Normalize();
+					pointRotationProperty.vector3Value = updatedQuaternion.eulerAngles;
+				    }
+
+				    // Setting to editing mode to flag that cooking needs to be deferred
+				    SetCurveState(HEU_Curve.CurveEditState.EDITING, serializedCurve);
+
+				    AddChangedSerializedObject(serializedCurve, updatedCurves);
+				}
+			    }
+			    bInteractionOcurred = true;
+			}
+
+		        break;
+		    case Tool.Scale:
+			float handleSize = HandleUtility.GetHandleSize(handleCenter);
+
+		        Vector3 newScale = Handles.ScaleHandle(handleScale, handleCenter, handleRotation, handleSize);
+
+			Vector3 deltaScale = newScale - handleScale;
+
+			if (deltaScale.magnitude > 0)
+			{
+			    foreach (KeyValuePair<string, List<int>> curvePoints in _selectedCurvePoints)
+			    {
+				List<int> selectedPoints = curvePoints.Value;
+				if (selectedPoints.Count > 0)
+				{
+				    SerializedObject serializedCurve = GetOrCreateSerializedCurve(curvePoints.Key);
+				    SerializedProperty curveNodesProperty = serializedCurve.FindProperty("_curveNodeData");
+
+				    foreach (int pointIndex in selectedPoints)
+				    {
+					SerializedProperty curveNodeProperty = curveNodesProperty.GetArrayElementAtIndex(pointIndex);
+					SerializedProperty pointScaleProperty = curveNodeProperty.FindPropertyRelative(HEU_Defines.HAPI_ATTRIB_SCALE);
+					Vector3 updatedScale = pointScaleProperty.vector3Value + deltaScale;
+
+					HEU_Curve curve = serializedCurve.targetObject as HEU_Curve;
+					pointScaleProperty.vector3Value = updatedScale;
+				    }
+					
+				    // Setting to editing mode to flag that cooking needs to be deferred
+				    SetCurveState(HEU_Curve.CurveEditState.EDITING, serializedCurve);
+
+				    AddChangedSerializedObject(serializedCurve, updatedCurves);
+				}
+			    }
+			    bInteractionOcurred = true;
+			}
+
+		        break;
+		    default:
+			// Translation is the default because it is the most common.
+
+			// Let Unity do the transform handle magic
+			Vector3 newPosition = Handles.PositionHandle(handleCenter, handleRotation);
+
+			Vector3 deltaMove = newPosition - handleCenter;
+			if (deltaMove.magnitude > 0)
+			{
+			    // User dragged point(s)
+			    // We update point value here, but defer parameter coords update until after we finished editing
+
+			    foreach (KeyValuePair<string, List<int>> curvePoints in _selectedCurvePoints)
+			    {
+				List<int> selectedPoints = curvePoints.Value;
+				if (selectedPoints.Count > 0)
+				{
+				    SerializedObject serializedCurve = GetOrCreateSerializedCurve(curvePoints.Key);
+				    SerializedProperty curveNodesProperty = serializedCurve.FindProperty("_curveNodeData");
+
+				    foreach (int pointIndex in selectedPoints)
+				    {
+					SerializedProperty curveNodeProperty = curveNodesProperty.GetArrayElementAtIndex(pointIndex);
+					SerializedProperty pointProperty = curveNodeProperty.FindPropertyRelative("position");
+					Vector3 updatedPosition = pointProperty.vector3Value + deltaMove;
+
+					HEU_Curve curve = serializedCurve.targetObject as HEU_Curve;
+					if (curve != null)
+					{
+					    // Localize the movement vector to the curve point's transform,
+					    // since deltaMove is based on the transformed curve point,
+					    // and we're adding to the local curve point.
+					    Vector3 localDeltaMove = curve.GetInvertedTransformedDirection(deltaMove);
+					    updatedPosition = pointProperty.vector3Value + localDeltaMove;
+					}
+
+					pointProperty.vector3Value = updatedPosition;
+				    }
+
+				    // Setting to editing mode to flag that cooking needs to be deferred
+				    SetCurveState(HEU_Curve.CurveEditState.EDITING, serializedCurve);
+
+				    AddChangedSerializedObject(serializedCurve, updatedCurves);
+				}
+			    }
+
+			    bInteractionOcurred = true;
+			}
+
+			break;
+		}
+
 
 		// After drag, process/cook each curve to update its state
 		foreach (HEU_Curve curve in _curves)
@@ -780,7 +1054,7 @@ namespace HoudiniEngineUnity
 		    HEU_Curve.CurveEditState editState = (HEU_Curve.CurveEditState)stateProperty.intValue;
 
 		    // On mouse release, transition editing curve to generation state
-		    if (!isDraggingPoints)
+		    if (!isDraggingPoints || (isDraggingPoints && cookWhileDragging))
 		    {
 			if (editState == HEU_Curve.CurveEditState.EDITING)
 			{
@@ -846,7 +1120,7 @@ namespace HoudiniEngineUnity
 		}
 		case EventType.MouseDrag:
 		{
-		    if (!_dragMouseDown && !currentEvent.alt && !currentEvent.control
+		    if (!_dragMouseDown && !currentEvent.alt
 			    && currentEvent.button == 0 && !isDraggingPoints && !wasDraggingPoints && _cleanMouseDown)
 		    {
 			_dragMouseStart = mousePosition;
@@ -873,7 +1147,7 @@ namespace HoudiniEngineUnity
 			SwitchToMode(HEU_Curve.Interaction.VIEW);
 			currentEvent.Use();
 		    }
-		    else if (!currentEvent.alt && currentEvent.keyCode == KeyCode.Space)
+		    else if (!currentEvent.alt && currentEvent.keyCode == ToggleModeHotkey())
 		    {
 			// Toggle modes
 			SwitchToMode(HEU_Curve.Interaction.ADD);
@@ -907,7 +1181,7 @@ namespace HoudiniEngineUnity
 		{
 		    if (_dragMouseDown)
 		    {
-			DrawSelectionBox(mousePosition, true);
+			DrawSelectionBox(mousePosition, true, !currentEvent.control);
 		    }
 
 		    break;
@@ -1009,7 +1283,7 @@ namespace HoudiniEngineUnity
 	    Color defaultColor = Handles.color;
 	    Handles.color = lineColor;
 	    Matrix4x4 defaultMatrix = Handles.matrix;
-	    Handles.matrix = curve._targetGameObject.transform.localToWorldMatrix;
+	    Handles.matrix = curve.TargetGameObject.transform.localToWorldMatrix;
 	    Handles.DrawAAPolyLine(_lineTexture, 10f, vertices);
 	    Handles.matrix = defaultMatrix;
 	    Handles.color = defaultColor;
@@ -1022,7 +1296,7 @@ namespace HoudiniEngineUnity
 	    Color defaultColor = Handles.color;
 	    Handles.color = lineColor;
 	    Matrix4x4 defaultMatrix = Handles.matrix;
-	    Handles.matrix = curve._targetGameObject.transform.localToWorldMatrix;
+	    Handles.matrix = curve.TargetGameObject.transform.localToWorldMatrix;
 	    Handles.DrawAAPolyLine(_lineTexture, 10f, points.ToArray());
 	    Handles.matrix = defaultMatrix;
 	    Handles.color = defaultColor;
@@ -1067,7 +1341,21 @@ namespace HoudiniEngineUnity
 	    {
 		_selectedCurvePoints[curve.CurveName] = new List<int>();
 	    }
-	    _selectedCurvePoints[curve.CurveName].Add(pointIndex);
+
+	    if (!_selectedCurvePoints[curve.CurveName].Contains(pointIndex))
+	    {
+		_selectedCurvePoints[curve.CurveName].Add(pointIndex);
+	    }
+	}
+	
+	private bool IsPointSelected(HEU_Curve curve, int pointIndex)
+	{
+	    if (!_selectedCurvePoints.ContainsKey(curve.CurveName))
+	    {
+		return false;
+	    }
+
+	    return _selectedCurvePoints[curve.CurveName].Contains(pointIndex);
 	}
 
 	private void DeselectAllPoints()
@@ -1089,7 +1377,7 @@ namespace HoudiniEngineUnity
 	    }
 	}
 
-	private void DrawSelectionBox(Vector3 mousePosition, bool bAutoSelectPoints)
+	private void DrawSelectionBox(Vector3 mousePosition, bool bAutoSelectPoints, bool bDeselectPoints)
 	{
 	    // First draw the selection box from drag start to current mouse position.
 
@@ -1123,7 +1411,11 @@ namespace HoudiniEngineUnity
 	    {
 		// Now we select points withing the selection box
 
-		DeselectAllPoints();
+		if (bDeselectPoints)
+		{
+		    DeselectAllPoints();
+		}
+
 
 		// We'll use a rect to test against each curve point
 		Rect selectionRect = new Rect(_dragMouseStart.x, _dragMouseStart.y, (mousePosition.x - _dragMouseStart.x), (mousePosition.y - _dragMouseStart.y));
@@ -1146,7 +1438,8 @@ namespace HoudiniEngineUnity
 			}
 			else
 			{
-			    Handles.color = _unselectedPointColor;
+			    bool bAlreadySelected = IsPointSelected(curve, i);
+			    Handles.color = !bAlreadySelected ? _unselectedPointColor : _selectedPointColor;
 			}
 
 			HEU_EditorUI.DrawSphereCap(i, pointPosition, Quaternion.identity, HEU_EditorUI.GetHandleSize(pointPosition));
@@ -1213,7 +1506,11 @@ namespace HoudiniEngineUnity
 		    // Help text
 		    if (_interactionMode == HEU_Curve.Interaction.VIEW)
 		    {
+#if UNITY_2021_2_OR_NEWER
+			GUILayout.Label(_curveViewHelp2);
+#else
 			GUILayout.Label(_curveViewHelp);
+#endif
 		    }
 		    else if (_interactionMode == HEU_Curve.Interaction.ADD)
 		    {
@@ -1221,7 +1518,7 @@ namespace HoudiniEngineUnity
 			DrawHelpLineGridBox("A", "Toggle where to add new point (Start, Inside, End).");
 			DrawHelpLineGridBox("Hold " + HEU_Defines.HEU_KEY_CTRL, "Grid snapping.");
 			DrawHelpLineGridBox("Backspace", "Delete last new point.");
-			DrawHelpLineGridBox("Space", "Edit mode.");
+			DrawToggleModeHotkey("Edit mode.");
 			DrawHelpLineGridBox("Esc / Enter", "View mode.");
 
 			GUILayout.Space(5);
@@ -1236,12 +1533,29 @@ namespace HoudiniEngineUnity
 		    }
 		    else if (_interactionMode == HEU_Curve.Interaction.EDIT)
 		    {
-			DrawHelpLineGridBox("Left Mouse", "Select point.");
-			DrawHelpLineGridBox(HEU_Defines.HEU_KEY_CTRL + " + Left Mouse", "Multi-select point.");
-			DrawHelpLineGridBox(string.Format("Hold {0} + Left Mouse", HEU_Defines.HEU_KEY_CTRL), "Grid snapping when moving points.");
-			DrawHelpLineGridBox("Backspace", "Delete selected points.");
-			DrawHelpLineGridBox("Space", "Add mode.");
-			DrawHelpLineGridBox("Esc / Enter", "View mode.");
+
+			Event currentEvent = Event.current;
+
+			if (currentEvent.shift && HEU_PluginSettings.UseHybridCurveEditing)
+			{
+			    DrawHelpLineGridBox("Shift + Left Mouse", "Add a point to the end of the curve or inbetween two nodes.");
+			    DrawHelpLineGridBox("Shift + Ctrl + Left Mouse", "Add point to the start of the curve or inbetween two nodes.");
+			    DrawHelpLineGridBox("Release Shift", "Return to regular edit mode.");
+			}
+			else
+			{
+			    DrawHelpLineGridBox("Left Mouse", "Select point.");
+			    DrawHelpLineGridBox(HEU_Defines.HEU_KEY_CTRL + " + Left Mouse", "Multi-select point.");
+			    DrawHelpLineGridBox(string.Format("Hold {0} + Left Mouse", HEU_Defines.HEU_KEY_CTRL), "Grid snapping when moving points.");
+			    DrawHelpLineGridBox("Backspace", "Delete selected points.");
+			    DrawToggleModeHotkey("Add mode.");
+			    DrawHelpLineGridBox("F", "Frame the selected nodes or the curve itself.");
+			    if (HEU_PluginSettings.UseHybridCurveEditing)
+			    {
+				DrawHelpLineGridBox("Hold Shift", "Enter hybrid Add/Edit nodes mode.");
+			    }
+			}
+
 		    }
 
 		}
@@ -1270,8 +1584,8 @@ namespace HoudiniEngineUnity
 	    {
 		GUILayout.FlexibleSpace();
 
-		GUILayout.Box(keyText, _helpGridBoxStyle, GUILayout.Width(180), GUILayout.Height(20));
-		GUILayout.Box(descText, _helpGridBoxStyle, GUILayout.Width(300), GUILayout.Height(20));
+		GUILayout.Box(keyText, _helpGridBoxStyle, GUILayout.Width(200), GUILayout.Height(20));
+		GUILayout.Box(descText, _helpGridBoxStyle, GUILayout.Width(370), GUILayout.Height(20));
 
 		GUILayout.FlexibleSpace();
 	    }
@@ -1330,6 +1644,7 @@ namespace HoudiniEngineUnity
 	    if (newState == HEU_Curve.CurveEditState.REQUIRES_GENERATION)
 	    {
 		SyncCurvePointsToParameters(serializedCurve);
+		this.Repaint(); // Required to keep curve inspector in sync
 	    }
 
 	    // This allows to apply serialized changes
@@ -1345,6 +1660,12 @@ namespace HoudiniEngineUnity
 	{
 	    // Get the parameters, find the coords parameter data, then set the points array as string
 
+	    if (serializedCurve.FindProperty("_curveDataType").enumValueIndex != (int)HEU_CurveDataType.GEO_COORDS_PARAM)
+	    {
+		// Uploading for new curves are done in HEU_Curve::OnPresyncParameters()
+		return;
+	    }
+
 	    SerializedProperty parametersProperty = serializedCurve.FindProperty("_parameters");
 
 	    // Since Unity doesn't automatically serialize referenced objects, so we need to create serialized object, and apply changes
@@ -1359,16 +1680,22 @@ namespace HoudiniEngineUnity
 		    SerializedProperty stringsProperty = parameterDataProperty.FindPropertyRelative("_stringValues");
 
 		    List<Vector3> points = new List<Vector3>();
-		    SerializedProperty curvePointsProperty = serializedCurve.FindProperty("_points");
-		    for (int j = 0; j < curvePointsProperty.arraySize; ++j)
+		    SerializedProperty curveNodesProperty = serializedCurve.FindProperty("_curveNodeData");
+
+		    for (int j = 0; j < curveNodesProperty.arraySize; ++j)
 		    {
-			points.Add(curvePointsProperty.GetArrayElementAtIndex(j).vector3Value);
+			SerializedProperty curveNodeProperty = curveNodesProperty.GetArrayElementAtIndex(j);
+			SerializedProperty pointProperty = curveNodeProperty.FindPropertyRelative("position");
+
+			points.Add(pointProperty.vector3Value);
 		    }
+
 		    stringsProperty.GetArrayElementAtIndex(0).stringValue = HEU_Curve.GetPointsString(points);
 
 		    break;
 		}
 	    }
+
 	    parameterObject.ApplyModifiedProperties();
 	}
 
@@ -1380,7 +1707,8 @@ namespace HoudiniEngineUnity
 		if (selectedPoints.Count > 0)
 		{
 		    SerializedObject serializedCurve = GetOrCreateSerializedCurve(curvePoints.Key);
-		    SerializedProperty curvePointsProperty = serializedCurve.FindProperty("_points");
+		    SerializedProperty curveNodesProperty = serializedCurve.FindProperty("_curveNodeData");
+
 
 		    // Re-order point indices to delete from highest index to lowest, as otherwse
 		    // our indces get out of sync when deleting the lower indices first.
@@ -1390,9 +1718,9 @@ namespace HoudiniEngineUnity
 
 		    foreach (int pointIndex in sortedIndices)
 		    {
-			if (pointIndex >= 0 && pointIndex < curvePointsProperty.arraySize)
+			if (pointIndex >= 0 && pointIndex < curveNodesProperty.arraySize)
 			{
-			    curvePointsProperty.DeleteArrayElementAtIndex(pointIndex);
+			    curveNodesProperty.DeleteArrayElementAtIndex(pointIndex);
 			}
 		    }
 
@@ -1410,17 +1738,32 @@ namespace HoudiniEngineUnity
 	    DeselectAllPoints();
 	}
 
-	private void AddPoint(string curveName, int pointIndex, Vector3 newPointPosition, List<SerializedObject> updatedCurves)
+	private void AddPoint(string curveName, int pointIndex, Vector3 newPointPosition, List<SerializedObject> updatedCurves, bool bSelectNewPoint)
 	{
 	    SerializedObject serializedCurve = GetOrCreateSerializedCurve(curveName);
-	    SerializedProperty curvePointsProperty = serializedCurve.FindProperty("_points");
-	    if (pointIndex >= 0 && pointIndex <= curvePointsProperty.arraySize)
+	    SerializedProperty curveNodesProperty = serializedCurve.FindProperty("_curveNodeData");
+	    if (pointIndex >= 0 && pointIndex <= curveNodesProperty.arraySize)
 	    {
 		HEU_Curve curve = GetCurve(curveName);
 		newPointPosition = curve.GetInvertedTransformedPosition(newPointPosition);
 
-		curvePointsProperty.InsertArrayElementAtIndex(pointIndex);
-		curvePointsProperty.GetArrayElementAtIndex(pointIndex).vector3Value = newPointPosition;
+		curveNodesProperty.InsertArrayElementAtIndex(pointIndex);
+		SerializedProperty curveNodeProperty = curveNodesProperty.GetArrayElementAtIndex(pointIndex);
+		SerializedProperty pointProperty = curveNodeProperty.FindPropertyRelative("position");
+		pointProperty.vector3Value = newPointPosition;
+
+		SerializedProperty rotationProperty = curveNodeProperty.FindPropertyRelative("rotation");
+		rotationProperty.vector3Value = Vector3.zero;
+
+		SerializedProperty scaleProperty = curveNodeProperty.FindPropertyRelative("scale");
+		scaleProperty.vector3Value = Vector3.one;
+
+		if (curve.IsPartCurve)
+		{
+		    SerializedProperty curveCountIndexProperty = curveNodeProperty.FindPropertyRelative("curveCountIndex");
+		    int newCurveCountIndexValue = curve.GetCurveCountIndexFromPositionIndex(pointIndex);
+		    curveCountIndexProperty.intValue = newCurveCountIndexValue;
+		}
 
 		SerializedProperty editStateProperty = serializedCurve.FindProperty("_editState");
 		if (editStateProperty.intValue != (int)HEU_Curve.CurveEditState.EDITING)
@@ -1432,7 +1775,14 @@ namespace HoudiniEngineUnity
 		_latestPointsAdded.Push(pointIndex);
 
 		AddChangedSerializedObject(serializedCurve, updatedCurves);
+
+		if (bSelectNewPoint)
+		{
+		    SelectAddPoint(curve, pointIndex);
+		}
+
 		GUI.changed = true;
+
 	    }
 	}
 
@@ -1442,6 +1792,115 @@ namespace HoudiniEngineUnity
 	    {
 		serializedList.Add(serializedObject);
 	    }
+	}
+
+	public void RepaintCurves()
+	{
+	    foreach (HEU_Curve curve in _curves)
+	    {
+		// Draw the cooked curve using its vertices
+		DrawCurveUsingVertices(curve, _unselectedCurveColor);
+
+		DrawPointCaps(curve, _viewPointColor);
+	    }
+	}
+
+	private void GetClosestPointToCurve(Vector3 mousePosition, HEU_Curve curve, ref int closestPointIndex, ref string closestPointName, ref float closestDistance)
+	{
+	    // Control -> add point between closest line segment
+ 
+	    List<Vector3> points = curve.GetAllPoints();
+	    int numPoints = points.Count;
+
+	    for (int i = 0; i < numPoints - 1; ++i)
+	    {
+		Vector3 pointPos0 = curve.GetTransformedPosition(points[i]);
+		Vector3 pointPos1 = curve.GetTransformedPosition(points[i + 1]);
+ 
+		Vector3 screenPos0 = HEU_EditorUI.GetHandleWorldToScreenPosition(pointPos0, _currentCamera);
+		Vector3 screenPos1 = HEU_EditorUI.GetHandleWorldToScreenPosition(pointPos1, _currentCamera);
+ 
+		float distance = HandleUtility.DistancePointToLineSegment(mousePosition, screenPos0, screenPos1);
+		if (distance < closestDistance)
+		{
+		    closestDistance = distance;
+		    _closestPointIndex = i + 1;
+		    _closestCurveName = curve.CurveName;
+		}
+	    }	
+	}
+
+	private bool IsMouseIntersectingClosestCurve(Vector3 mousePosition)
+	{
+	    if (_closestCurveName == null || _closestPointIndex < 0)
+	    {
+		return false;
+	    }
+
+	    HEU_Curve closestCurve = GetCurve(_closestCurveName);
+	    if (closestCurve == null)
+	    {
+		return false;
+	    }
+
+	    int numPoints = closestCurve.GetNumPoints();
+	    if (numPoints < 2)
+	    {
+		return false;
+	    }
+
+	    Vector3 pointPos0 = closestCurve.GetTransformedPoint(_closestPointIndex - 1);
+	    Vector3 pointPos1 = closestCurve.GetTransformedPoint(_closestPointIndex);
+ 
+	    Vector3 screenPos0 = HEU_EditorUI.GetHandleWorldToScreenPosition(pointPos0, _currentCamera);
+	    Vector3 screenPos1 = HEU_EditorUI.GetHandleWorldToScreenPosition(pointPos1, _currentCamera);
+ 
+	    Vector3 curveNewPointPosition = HandleUtility.ProjectPointLine(mousePosition, screenPos0, screenPos1);
+
+	    Vector3 projectedPos = curveNewPointPosition;
+
+	    Vector2 deltaNew = curveNewPointPosition - screenPos0;
+	    Vector2 deltaLine = screenPos1 - screenPos0;
+	    float ratio = Mathf.Clamp01(deltaNew.magnitude / deltaLine.magnitude);
+ 
+	    Vector3 newDir = (pointPos1 - pointPos0);
+	    Vector3 transformedPosition = pointPos0 + (newDir.normalized * newDir.magnitude * ratio);
+
+	    Vector3 ogCurvePos = curveNewPointPosition;
+	    float handleSize = HandleUtility.GetHandleSize(curveNewPointPosition);
+
+	    curveNewPointPosition.z = mousePosition.z;
+
+	    float distance = Vector3.Distance(mousePosition, curveNewPointPosition);
+
+	    float distanceRatio = distance;
+	    const float distanceConst = 5f; // Distance to be considered touching - Arbirarily chosen
+	    if (distanceRatio <= distanceConst)
+	    {
+	        return true;
+	    }
+	    else
+	    {
+	        return false;
+	    }
+	}
+
+	internal void DrawToggleModeHotkey(string description)
+	{
+#if UNITY_2021_2_OR_NEWER
+	    DrawHelpLineGridBox("F2", description);
+#else
+	    DrawHelpLineGridBox("Space", description);
+#endif
+	}
+
+	internal KeyCode ToggleModeHotkey()
+	{
+#if UNITY_2021_2_OR_NEWER
+	    return KeyCode.F2;
+#else
+	    return KeyCode.Space;
+#endif
 	}
     }
 

@@ -89,7 +89,7 @@ namespace HoudiniEngineUnity
 	public static HEU_SessionBase CreateSessionFromType(System.Type type)
 	{
 #if !UNITY_5_6_OR_NEWER
-            Debug.LogError("Houdini Engine for Unity only supports Unity version 5.6.0 and newer!");
+            HEU_Logger.LogError("Houdini Engine for Unity only supports Unity version 5.6.0 and newer!");
 #elif HOUDINIENGINEUNITY_ENABLED
 	    if (type == null || type == typeof(HEU_SessionHAPI))
 	    {
@@ -208,7 +208,7 @@ namespace HoudiniEngineUnity
 		    }
 		    catch (System.Exception ex)
 		    {
-			Debug.LogWarningFormat("Loading session with ID {0} failed with {1}. Ignoring the session.", sessionData.SessionID, ex.ToString());
+			HEU_Logger.LogWarningFormat("Loading session with ID {0} failed with {1}. Ignoring the session.", sessionData.SessionID, ex.ToString());
 		    }
 		}
 	    }
@@ -415,7 +415,7 @@ namespace HoudiniEngineUnity
 	    {
 		if (sessionEntry.GetSessionData() != null)
 		{
-		    Debug.Log(HEU_Defines.HEU_NAME + ": Closing session: " + sessionEntry.GetSessionData().SessionID);
+		    HEU_Logger.Log(HEU_Defines.HEU_NAME + ": Closing session: " + sessionEntry.GetSessionData().SessionID);
 		}
 		sessionEntry.CloseSession();
 	    }
@@ -563,7 +563,7 @@ namespace HoudiniEngineUnity
 	public static bool ClearConnectionError()
 	{
 #if HOUDINIENGINEUNITY_ENABLED
-	    HAPI_Result result = HEU_HAPIImports.HAPI_ClearConnectionError();
+	    HAPI_Result result = HEU_HAPIFunctions.HAPI_ClearConnectionError();
 	    return (result == HAPI_Result.HAPI_RESULT_SUCCESS);
 #else
 	    return true;
@@ -574,16 +574,17 @@ namespace HoudiniEngineUnity
 	{
 #if HOUDINIENGINEUNITY_ENABLED
 	    int bufferLength = 0;
-	    HAPI_Result result = HEU_HAPIImports.HAPI_GetConnectionErrorLength(out bufferLength);
+	    HAPI_Result result = HEU_HAPIFunctions.HAPI_GetConnectionErrorLength(out bufferLength);
 	    if (result == HAPI_Result.HAPI_RESULT_SUCCESS)
 	    {
 		if (bufferLength > 0)
 		{
-		    StringBuilder sb = new StringBuilder(bufferLength);
-		    result = HEU_HAPIImports.HAPI_GetConnectionError(sb, bufferLength, clear);
+		    byte[] bytes = new byte[bufferLength];
+
+		    result = HEU_HAPIFunctions.HAPI_GetConnectionError(bytes, bufferLength, clear);
 		    if (result == HAPI_Result.HAPI_RESULT_SUCCESS)
 		    {
-			return sb.ToString();
+			return bytes.AsString();
 		    }
 		}
 		else
@@ -639,7 +640,7 @@ namespace HoudiniEngineUnity
 		if (bResult)
 		{
 		    // TODO
-		    Debug.LogWarning("This is currently not supported in the plugin!");
+		    HEU_Logger.LogWarning("This is currently not supported in the plugin!");
 		}
 	    }
 #else
@@ -799,7 +800,7 @@ namespace HoudiniEngineUnity
 		session.SetSessionErrorMsg("Unable to save session to .hip file at: " + HIPPath, true);
 		return false;
 	    }
-	    Debug.Log("Saved session to " + HIPPath);
+	    HEU_Logger.Log("Saved session to " + HIPPath);
 
 	    string HoudiniPath = HEU_PluginSettings.HoudiniDebugLaunchPath;
 
@@ -918,7 +919,7 @@ namespace HoudiniEngineUnity
 
 		    if (!isInstanced)
 		    {
-			groupCount = geoInfo.getGroupCountByType(groupType); ;
+			groupCount = geoInfo.getGroupCountByType(groupType);
 		    }
 		    else
 		    {
@@ -1055,18 +1056,18 @@ namespace HoudiniEngineUnity
 	/// <param name="bRecursive">Whether or not to compose the list recursively</param>
 	/// <param name="childNodeIDs">Array to store the child node IDs.
 	/// <returns>True if successfully retrieved the child node list</returns>
-	public static bool GetComposedChildNodeList(HEU_SessionBase session, HAPI_NodeId parentNodeID, HAPI_NodeTypeBits nodeTypeFilter, HAPI_NodeFlagsBits nodeFlagFilter, bool bRecursive, out HAPI_NodeId[] childNodeIDs)
+	public static bool GetComposedChildNodeList(HEU_SessionBase session, HAPI_NodeId parentNodeID, HAPI_NodeTypeBits nodeTypeFilter, HAPI_NodeFlagsBits nodeFlagFilter, bool bRecursive, out HAPI_NodeId[] childNodeIDs, bool bLogIfError = true)
 	{
 	    childNodeIDs = null;
 	    // First compose the internal list and get the count, then get the actual list.
 	    int count = -1;
-	    bool bResult = session.ComposeChildNodeList(parentNodeID, nodeTypeFilter, nodeFlagFilter, bRecursive, ref count);
+	    bool bResult = session.ComposeChildNodeList(parentNodeID, nodeTypeFilter, nodeFlagFilter, bRecursive, ref count, bLogIfError);
 	    if (bResult)
 	    {
 		childNodeIDs = new HAPI_NodeId[count];
 		if (count > 0)
 		{
-		    return session.GetComposedChildNodeList(parentNodeID, childNodeIDs, count);
+		    return session.GetComposedChildNodeList(parentNodeID, childNodeIDs, count, bLogIfError);
 		}
 		else
 		{

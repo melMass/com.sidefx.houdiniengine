@@ -28,10 +28,19 @@
 using UnityEngine;
 using System.Collections;
 
+// Expose internal classes/functions
+#if UNITY_EDITOR
+using System.Runtime.CompilerServices;
+
+[assembly: InternalsVisibleTo("HoudiniEngineUnityEditor")]
+[assembly: InternalsVisibleTo("HoudiniEngineUnityEditorTests")]
+[assembly: InternalsVisibleTo("HoudiniEngineUnityPlayModeTests")]
+#endif
+
 namespace HoudiniEngineUnity
 {
     [System.Serializable]
-    public sealed class HEU_AttributeData
+    internal sealed class HEU_AttributeData : IEquivable<HEU_AttributeData>
     {
 	public HAPI_AttributeInfo _attributeInfo;
 
@@ -53,7 +62,7 @@ namespace HoudiniEngineUnity
 	public float[] _floatValues;
 	public string[] _stringValues;
 
-	public bool IsColorAttribute() { return _name.Equals(HEU_Defines.HAPI_ATTRIB_COLOR) || _attributeInfo.typeInfo == HAPI_AttributeTypeInfo.HAPI_ATTRIBUTE_TYPE_COLOR; }
+	public bool IsColorAttribute() { return _name.Equals(HEU_HAPIConstants.HAPI_ATTRIB_COLOR) || _attributeInfo.typeInfo == HAPI_AttributeTypeInfo.HAPI_ATTRIBUTE_TYPE_COLOR; }
 
 	public enum AttributeState
 	{
@@ -63,7 +72,7 @@ namespace HoudiniEngineUnity
 	}
 	public AttributeState _attributeState;
 
-	public void CopyValuesTo(HEU_AttributeData destAttrData)
+	internal void CopyValuesTo(HEU_AttributeData destAttrData)
 	{
 	    if (this._intValues == null)
 	    {
@@ -97,6 +106,34 @@ namespace HoudiniEngineUnity
 		System.Array.Resize<string>(ref destAttrData._stringValues, arraySize);
 		System.Array.Copy(this._stringValues, destAttrData._stringValues, arraySize);
 	    }
+	}
+
+	public bool IsEquivalentTo(HEU_AttributeData other)
+	{
+
+	    bool bResult = true;
+
+	    string header = "HEU_AttributeData";
+
+	    if (other == null)
+	    {
+		HEU_Logger.LogError(header + " Not equivalent");
+		return false;
+	    }
+
+	    HEU_TestHelpers.AssertTrueLogEquivalent(this._attributeInfo.ToTestObject(), other._attributeInfo.ToTestObject(), ref bResult, header, "_attributeInfo");
+	    HEU_TestHelpers.AssertTrueLogEquivalent(this._name, other._name, ref bResult, header, "_name");
+	    HEU_TestHelpers.AssertTrueLogEquivalent(this._attributeType, other._attributeType, ref bResult, header, "_attributeType");
+
+	    HEU_TestHelpers.AssertTrueLogEquivalent(this._intValues, other._intValues, ref bResult, header, "_intValues");
+
+	    HEU_TestHelpers.AssertTrueLogEquivalent(this._floatValues, other._floatValues, ref bResult, header, "_floatValues");
+
+	    HEU_TestHelpers.AssertTrueLogEquivalent(this._stringValues, other._stringValues, ref bResult, header, "_stringValues");
+
+	    HEU_TestHelpers.AssertTrueLogEquivalent(this._attributeState, other._attributeState, ref bResult, header, "_attributeState");
+
+	    return bResult;
 	}
     }
 

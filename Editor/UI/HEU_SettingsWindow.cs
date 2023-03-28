@@ -40,6 +40,7 @@ namespace HoudiniEngineUnity
 	private static bool _showEnvironment = true;
 	private static bool _showCooking = true;
 	private static bool _showGeometry = true;
+	private static bool _showMaterials = true;
 	private static bool _showSession = false;
 	private static bool _showTools = false;
 	private static bool _showAdvanced = false;
@@ -99,6 +100,7 @@ namespace HoudiniEngineUnity
 		DrawSection(this, "ENVIRONMENT", this.DrawDetailsEnvironment, ref _showEnvironment);
 		DrawSection(this, "COOKING", this.DrawDetailsCooking, ref _showCooking);
 		DrawSection(this, "GEOMETRY", this.DrawDetailsGeometry, ref _showGeometry);
+		DrawSection(this, "MATERIALS", this.DrawDetailsMaterials, ref _showMaterials);
 		DrawSection(this, "SESSION", this.DrawSessionSettings, ref _showSession);
 		DrawSection(this, "TOOLS", this.DrawToolSettings, ref _showTools);
 		DrawSection(this, "ADVANCED", this.DrawAdvancedSettings, ref _showAdvanced);
@@ -368,7 +370,9 @@ namespace HoudiniEngineUnity
 
 	    {
 		bool oldValue = HEU_PluginSettings.CookingEnabled;
-		bool newValue = HEU_EditorUI.DrawToggleLeft(oldValue, "Enable Cooking");
+		bool newValue = HEU_EditorUI.DrawToggleLeft(oldValue,
+		    "Enable Cooking",
+		    "If disabled, all cooking will stop.");
 		if (newValue != oldValue)
 		{
 		    HEU_PluginSettings.CookingEnabled = newValue;
@@ -378,7 +382,9 @@ namespace HoudiniEngineUnity
 	    HEU_EditorUI.DrawSeparator();
 	    {
 		bool oldValue = HEU_PluginSettings.CookingTriggersDownstreamCooks;
-		bool newValue = HEU_EditorUI.DrawToggleLeft(oldValue, "Cooking Triggers Downstream Cooks");
+		bool newValue = HEU_EditorUI.DrawToggleLeft(oldValue, 
+		    "Cooking Triggers Downstream Cooks",
+		    "If enabled, modifying a parent HDA will also trigger cooks to other HDAs linked downstrema.");
 		if (newValue != oldValue)
 		{
 		    HEU_PluginSettings.CookingTriggersDownstreamCooks = newValue;
@@ -387,8 +393,23 @@ namespace HoudiniEngineUnity
 	    }
 	    HEU_EditorUI.DrawSeparator();
 	    {
+		bool oldValue = HEU_PluginSettings.CookDisabledGameObjects;
+		bool newValue = HEU_EditorUI.DrawToggleLeft(oldValue, 
+		    "Cook Disabled GameObjects",
+		    "If enabled, disabled GameObjects will not be cooked, as if the Enable Cooking option were set to true.");
+		if (newValue != oldValue)
+		{
+		    HEU_PluginSettings.CookDisabledGameObjects = newValue;
+		    bChanged = true;
+		}
+	    }
+
+	    HEU_EditorUI.DrawSeparator();
+	    {
 		bool oldValue = HEU_PluginSettings.PushUnityTransformToHoudini;
-		bool newValue = HEU_EditorUI.DrawToggleLeft(oldValue, "Push Unity Transform To Houdini");
+		bool newValue = HEU_EditorUI.DrawToggleLeft(oldValue, 
+		    "Push Unity Transform To Houdini",
+		    "If enabled, pushes the Unity Transform value to Houdini. This is useful if you want to do something like Houdini SessionSync.");
 		if (newValue != oldValue)
 		{
 		    HEU_PluginSettings.PushUnityTransformToHoudini = newValue;
@@ -398,13 +419,30 @@ namespace HoudiniEngineUnity
 	    HEU_EditorUI.DrawSeparator();
 	    {
 		bool oldValue = HEU_PluginSettings.TransformChangeTriggersCooks;
-		bool newValue = HEU_EditorUI.DrawToggleLeft(oldValue, "Transform Change Triggers Cooks");
+		bool newValue = HEU_EditorUI.DrawToggleLeft(oldValue, 
+		    "Transform Change Triggers Cooks",
+		    "When activated, changing the transform of the HEU_HoudiniAsset object or an input node will trigger a cook.");
 		if (newValue != oldValue)
 		{
 		    HEU_PluginSettings.TransformChangeTriggersCooks = newValue;
 		    bChanged = true;
 		}
 	    }
+
+	    HEU_EditorUI.DrawSeparator();
+	    using (new EditorGUI.DisabledScope(!HEU_PluginSettings.TransformChangeTriggersCooks))
+	    {
+		bool oldValue = HEU_PluginSettings.ChildTransformChangeTriggersCooks;
+		bool newValue = HEU_EditorUI.DrawToggleLeft(oldValue, 
+		    "Child Transform Change Triggers Cooks", 
+		    "When activated, transform changes on children will also trigger cooks. Only valid if TransformChangeTriggersCook is enabled.");
+		if (newValue != oldValue)
+		{
+		    HEU_PluginSettings.ChildTransformChangeTriggersCooks = newValue;
+		    bChanged = true;
+		}
+	    }
+
 	    HEU_EditorUI.DrawSeparator();
 	    {
 		bool oldValue = HEU_PluginSettings.CookTemplatedGeos;
@@ -446,6 +484,70 @@ namespace HoudiniEngineUnity
 		}
 	    }
 
+	    HEU_EditorUI.DrawSeparator();
+	    {
+		bool oldValue = HEU_PluginSettings.WriteCookLogs;
+		bool newValue = HEU_EditorUI.DrawToggleLeft(oldValue,
+		    "Write Cook Logs",
+		    "If enabled, writes cook logs to the cook logs window. Useful for diagnosing issues, but may decrease performance");
+		if (newValue != oldValue)
+		{
+		    HEU_PluginSettings.WriteCookLogs = newValue;
+		    bChanged = true;
+		}
+	    }
+
+	    HEU_EditorUI.DrawSeparator();
+	    {
+		bool oldValue = HEU_PluginSettings.UseHDRColor;
+		bool newValue = HEU_EditorUI.DrawToggleLeft(oldValue,
+		    "Use HDR Color",
+		    "If enabled, uses HDR Color. Otherwise, uses the regular color picker.");
+		if (newValue != oldValue)
+		{
+		    HEU_PluginSettings.UseHDRColor = newValue;
+		    bChanged = true;
+		}
+	    }
+
+	    HEU_EditorUI.DrawSeparator();
+	    {
+		bool oldValue = HEU_PluginSettings.UseLegacyInputCurves;
+		bool newValue = HEU_EditorUI.DrawToggleLeft(oldValue, 
+		    "Use Legacy Input Curves",
+		    "Uses the old curve::1.0 node instead of HAPI curves.");
+		if (newValue != oldValue)
+		{
+		    HEU_PluginSettings.UseLegacyInputCurves = newValue;
+		    bChanged = true;
+		}
+	    }
+
+	    HEU_EditorUI.DrawSeparator();
+	    {
+		bool oldValue = HEU_PluginSettings.CookOnMouseUp;
+		bool newValue = HEU_EditorUI.DrawToggleLeft(oldValue, 
+		    "Cook on Mouse Up",
+		    "Certain parameters (e.g. Sliders, gradients, or animation curves) will cook excessively if we cook immedately. If on, will only cook on mouse up, improving UX.");
+		if (newValue != oldValue)
+		{
+		    HEU_PluginSettings.CookOnMouseUp = newValue;
+		    bChanged = true;
+		}
+	    }
+
+	    // Setting for unit tests only
+	    //HEU_EditorUI.DrawSeparator();
+	    //{
+	//	bool oldValue = HEU_PluginSettings.ShortenFolderPaths;
+	//	bool newValue = HEU_EditorUI.DrawToggleLeft(oldValue, "Use Shorten paths");
+	//	if (newValue != oldValue)
+	//	{
+	//	    HEU_PluginSettings.ShortenFolderPaths = newValue;
+	//	    bChanged = true;
+	//	}
+	    //}
+
 	    return bChanged;
 	}
 
@@ -478,7 +580,7 @@ namespace HoudiniEngineUnity
 		    }
 		    else
 		    {
-			Debug.LogWarningFormat("Plugin only supports 3 (triangles) or 4 (quads) max vertices values.");
+			HEU_Logger.LogWarningFormat("Plugin only supports 3 (triangles) or 4 (quads) max vertices values.");
 		    }
 		}
 	    }
@@ -497,7 +599,7 @@ namespace HoudiniEngineUnity
 		string oldValue = HEU_PluginSettings.DefaultTerrainMaterial;
 		if (_terrainMaterial == null && !string.IsNullOrEmpty(oldValue))
 		{
-		    //Debug.Log("Loading terrain material at: " + oldValue);
+		    //HEU_Logger.Log("Loading terrain material at: " + oldValue);
 		    _terrainMaterial = HEU_MaterialFactory.LoadUnityMaterial(oldValue);
 		}
 
@@ -575,6 +677,48 @@ namespace HoudiniEngineUnity
 	    HEU_EditorUI.DrawSeparator();
 
 	    EditorGUIUtility.labelWidth = 0;
+
+	    return bChanged;
+	}
+
+	private bool DrawDetailsMaterials()
+	{
+	    bool bChanged = false;
+
+	    HEU_PipelineType pipeline = HEU_RenderingPipelineDefines.GetPipeline();
+
+	    bool isBuiltInRenderPipeline = pipeline == HEU_PipelineType.BiRP;
+
+	    // Force set UseLegacyShaders to prevent possible locked state
+	    if (!isBuiltInRenderPipeline && HEU_PluginSettings.UseLegacyShaders == true)
+	    {
+		HEU_PluginSettings.UseLegacyShaders = false;
+	    }
+
+	    using (new EditorGUI.DisabledScope(!isBuiltInRenderPipeline))
+	    {
+		bool oldValue = HEU_PluginSettings.UseLegacyShaders;
+		bool newValue = HEU_EditorUI.DrawToggleLeft(oldValue, "Use Legacy shaders as default", "Use the legacy shaders in case your device doesn't support shader model 3.0. Only supported for the built-in render pipeline.");
+		if (newValue != oldValue)
+		{
+		    HEU_PluginSettings.UseLegacyShaders = newValue;
+		    bChanged = true;
+		}
+	    }
+
+	    bool isUsingLegacyShaders = HEU_PluginSettings.UseLegacyShaders;
+
+	    using (new EditorGUI.DisabledScope(isUsingLegacyShaders))
+	    {
+		bool oldValue = HEU_PluginSettings.UseSpecularShader;
+		bool newValue = HEU_EditorUI.DrawToggleLeft(oldValue, "Use Specular shader as default", "Use the specular workflow instead of the metallic one.");
+		if (newValue != oldValue)
+		{
+		    HEU_PluginSettings.UseSpecularShader = newValue;
+		    bChanged = true;
+		}
+	    }
+	    HEU_EditorUI.DrawSeparator();
 
 	    return bChanged;
 	}
@@ -658,14 +802,33 @@ namespace HoudiniEngineUnity
 	    HEU_EditorUI.DrawSeparator();
 	    {
 		Color oldValue = HEU_PluginSettings.LineColor;
-		Color newValue = EditorGUILayout.ColorField("Line Color", oldValue);
+		Color newValue;
+		if (HEU_PluginSettings.UseHDRColor)
+		{
+		    newValue = EditorGUILayout.ColorField(new GUIContent("Line Color", "Color of the line"), oldValue, true, true, true);
+		}
+		else
+		{
+		    newValue = EditorGUILayout.ColorField(new GUIContent("Line Color", "Color of the line"), oldValue);
+		}
+
 		if (newValue != oldValue)
 		{
 		    HEU_PluginSettings.LineColor = newValue;
 		    bChanged = true;
 		}
 	    }
+
 	    HEU_EditorUI.DrawSeparator();
+	    {
+		bool oldValue = HEU_PluginSettings.UseHybridCurveEditing;
+		bool newValue =  HEU_EditorUI.DrawToggleLeft(oldValue, "Use Hybrid Curve Editing", "Toggles the usage of 'Hybrid Curve Editing', which overrides the shift function when working with curves.");
+		if (oldValue != newValue)
+		{
+		    HEU_PluginSettings.UseHybridCurveEditing = newValue;
+		    bChanged = true;
+		}
+	    }
 
 	    return bChanged;
 	}
@@ -716,6 +879,16 @@ namespace HoudiniEngineUnity
 		if (oldValue != newValue && !string.IsNullOrEmpty(newValue))
 		{
 		    HEU_PluginSettings.RenderedCollisionGroupName = newValue;
+		    bChanged = true;
+		}
+	    }
+	    HEU_EditorUI.DrawSeparator();
+	    {
+		string oldValue = HEU_PluginSettings.RenderedConvexCollisionGroupName;
+		string newValue = EditorGUILayout.DelayedTextField("Rendered Convex Collision Group", oldValue);
+		if (oldValue != newValue && !string.IsNullOrEmpty(newValue))
+		{
+		    HEU_PluginSettings.RenderedConvexCollisionGroupName = newValue;
 		    bChanged = true;
 		}
 	    }

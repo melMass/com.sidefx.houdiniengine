@@ -293,27 +293,9 @@ namespace HoudiniEngineUnity
 
 		EditorGUILayout.Separator();
 
-		// Log
-		using (new EditorGUILayout.VerticalScope(_backgroundStyle))
+		if (_outputLogUI != null)
 		{
-		    using (new EditorGUILayout.HorizontalScope())
-		    {
-			EditorGUILayout.PrefixLabel(_eventMessageContent);
-
-			if (GUILayout.Button("Clear"))
-			{
-			    ClearLog();
-			}
-		    }
-
-		    string logMsg = GetLog();
-
-		    using (var scrollViewScope = new EditorGUILayout.ScrollViewScope(_eventMessageScrollPos, GUILayout.Height(120)))
-		    {
-			_eventMessageScrollPos = scrollViewScope.scrollPosition;
-
-			GUILayout.Label(logMsg, _eventMessageStyle);
-		    }
+		    _outputLogUI.OnGUI(GetLog());
 		}
 	    }
 
@@ -568,7 +550,7 @@ namespace HoudiniEngineUnity
 			Log("Connection errored!");
 			Log(ex.ToString());
 
-			Debug.Log(ex.ToString());
+			HEU_Logger.Log(ex.ToString());
 		    }
 		    finally
 		    {
@@ -779,11 +761,11 @@ namespace HoudiniEngineUnity
 			syncData._viewportHAPI = viewLocal;
 		    }
 
-		    //Debug.Log("Setting HAPI (from local)");
-		    //Debug.LogFormat("Pos: {0}, {1}, {2}", viewLocal.position[0], viewLocal.position[1], viewLocal.position[2]);
-		    //Debug.LogFormat("Rot: {0}, {1}, {2}, {3}", viewLocal.rotationQuaternion[0], 
+		    //HEU_Logger.Log("Setting HAPI (from local)");
+		    //HEU_Logger.LogFormat("Pos: {0}, {1}, {2}", viewLocal.position[0], viewLocal.position[1], viewLocal.position[2]);
+		    //HEU_Logger.LogFormat("Rot: {0}, {1}, {2}, {3}", viewLocal.rotationQuaternion[0], 
 			//viewLocal.rotationQuaternion[1], viewLocal.rotationQuaternion[2], viewLocal.rotationQuaternion[3]);
-		    //Debug.LogFormat("Dis: {0}, sceneView.camDist: {1}", viewLocal.offset, sceneView.cameraDistance);
+		    //HEU_Logger.LogFormat("Dis: {0}, sceneView.camDist: {1}", viewLocal.offset, sceneView.cameraDistance);
 		}
 	    }
 	}
@@ -837,28 +819,13 @@ namespace HoudiniEngineUnity
 	/// </summary>
 	void SetupUI()
 	{
-	    _backgroundStyle = new GUIStyle(GUI.skin.box);
-	    RectOffset br = _backgroundStyle.margin;
-	    br.top = 10;
-	    br.bottom = 6;
-	    br.left = 4;
-	    br.right = 4;
-	    _backgroundStyle.margin = br;
-
-	    br = _backgroundStyle.padding;
-	    br.top = 8;
-	    br.bottom = 8;
-	    br.left = 8;
-	    br.right = 8;
-	    _backgroundStyle.padding = br;
-
 	    _eventMessageContent = new GUIContent("Log", "Status messages logged here."); 
-
-	    _eventMessageStyle = new GUIStyle(EditorStyles.textArea);
-	    _eventMessageStyle.richText = true;
-
-	    _eventMessageStyle.normal.textColor = new Color(1f, 1f, 1f, 1f);
-	    _eventMessageStyle.normal.background = HEU_GeneralUtility.MakeTexture(1, 1, new Color(0, 0, 0, 1f));
+	    if (_outputLogUI == null)
+	    {
+		_outputLogUI = new HEU_OutputLogUIComponent(_eventMessageContent, ClearLog);
+	    }
+	    
+	    _outputLogUI.SetupUI();
 	}
 
 	/// <summary>
@@ -908,7 +875,7 @@ namespace HoudiniEngineUnity
 		return;
 	    }
 
-	    GameObject newGO = new GameObject(nodeName);
+	    GameObject newGO = HEU_GeneralUtility.CreateNewGameObject(nodeName);
 
 	    HEU_NodeSync nodeSync = newGO.AddComponent<HEU_NodeSync>();
 	    nodeSync.InitializeFromHoudini(session, newNodeID, nodeName, filePath);
@@ -948,11 +915,6 @@ namespace HoudiniEngineUnity
 	}
 
 	// DATA ---------------------------------------------------------------
-
-	GUIStyle _backgroundStyle;
-
-	private GUIStyle _eventMessageStyle;
-	private Vector2 _eventMessageScrollPos = new Vector2();
 
 	private GUIContent _eventMessageContent;
 
@@ -998,6 +960,7 @@ namespace HoudiniEngineUnity
 	    "Curve",
 	    "Input",
 	};
+	private HEU_OutputLogUIComponent _outputLogUI = null;
     }
 
 }

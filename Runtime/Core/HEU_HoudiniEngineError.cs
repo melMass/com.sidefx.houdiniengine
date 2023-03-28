@@ -24,12 +24,6 @@
 * EVEN IF ADVISED OF THE POSSIBILITY OF SUCH DAMAGE.
 */
 
-using System.Collections;
-using System.Collections.Generic;
-using UnityEngine;
-
-using System;
-
 
 namespace HoudiniEngineUnity
 {
@@ -46,7 +40,7 @@ namespace HoudiniEngineUnity
 
 	}
 
-	public HEU_HoudiniEngineError(string errorMsg)
+	internal HEU_HoudiniEngineError(string errorMsg)
 	{
 	    _errorMsg = errorMsg;
 	}
